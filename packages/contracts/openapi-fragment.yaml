@@ -1,0 +1,22 @@
+openapi: 3.0.3
+info:
+  title: jellycheckr AYSW fragment
+  version: 0.1.0
+paths:
+  /Plugins/Aysw/config:
+    get:
+      summary: Get effective config
+  /Plugins/Aysw/sessions/{sessionId}/ack:
+    post:
+      summary: Acknowledge prompt action
+  /Plugins/Aysw/sessions/{sessionId}/interaction:
+    post:
+      summary: Report user interaction
+  /Plugins/Aysw/sessions/{sessionId}/prompt-shown:
+    post:
+      summary: Mark prompt displayed to user
+  /Plugins/Aysw/admin/config:
+    get:
+      summary: Get admin config
+    put:
+      summary: Update admin config

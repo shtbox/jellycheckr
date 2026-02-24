@@ -1,0 +1,16 @@
+{
+  "name": "jellycheckr-web-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:bundle": "esbuild src/index.ts --bundle --platform=browser --format=iife --target=es2020 --outfile=dist/jellycheckr-web.bundle.js",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

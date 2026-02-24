@@ -1,0 +1,8 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    ports:
+      - "8096:8096"
+    volumes:
+      - ./tools/docker/config:/config
+      - ./tools/docker/cache:/cache

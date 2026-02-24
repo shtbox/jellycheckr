@@ -1,0 +1,29 @@
+# Build outputs
+bin/
+obj/
+dist/
+coverage/
+TestResults/
+apps/server-plugin/build/*
+apps/server-plugin/artifacts/
+apps/config-ui/build/*
+apps/web-client/build/*
+
+# Node
+node_modules/
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local runtime files
+*.log
+tmp/
+apps/server-plugin/src/.vs/*

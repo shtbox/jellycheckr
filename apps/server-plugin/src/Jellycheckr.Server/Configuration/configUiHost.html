@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Jellycheckr Config UI</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            color: #e5e5e5;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+        }
+
+        #jellycheckr-config-app {
+            padding: 0.25rem 0 1rem;
+        }
+
+        .jc-hostFallback {
+            padding: 1rem;
+            border: 1px solid rgba(255, 109, 109, 0.2);
+            border-radius: 12px;
+            background: rgba(255, 109, 109, 0.06);
+            margin: 0.5rem;
+            line-height: 1.35;
+        }
+    </style>
+</head>
+<body>
+    <div id="jellycheckr-config-app">
+        <div class="jc-hostFallback">Loading Jellycheckr configuration UI...</div>
+    </div>
+
+    <script src="jellycheckr-config-ui.js"></script>
+    <script>
+        (function () {
+            try {
+                if (window.parent && window.parent !== window && window.parent.getComputedStyle) {
+                    var parentBody = window.parent.document && window.parent.document.body;
+                    if (parentBody) {
+                        var parentStyles = window.parent.getComputedStyle(parentBody);
+                        if (parentStyles) {
+                            if (parentStyles.color) {
+                                document.body.style.color = parentStyles.color;
+                            }
+                            if (parentStyles.fontFamily) {
+                                document.body.style.fontFamily = parentStyles.fontFamily;
+                            }
+                        }
+                    }
+                }
+            } catch (ex) {
+                // Ignore parent style sync failures.
+            }
+
+            if (window.JellycheckrConfigAdmin && typeof window.JellycheckrConfigAdmin.bind === 'function') {
+                try {
+                    window.JellycheckrConfigAdmin.bind();
+                    return;
+                } catch (ex) {
+                    var msg = (ex && ex.message) ? ex.message : String(ex);
+                    document.getElementById('jellycheckr-config-app').innerHTML =
+                        '<div class="jc-hostFallback">Config UI bootstrap failed: ' + msg + '</div>';
+                    return;
+                }
+            }
+
+            document.getElementById('jellycheckr-config-app').innerHTML =
+                '<div class="jc-hostFallback">Config UI bundle loaded but did not register bootstrap.</div>';
+        })();
+    </script>
+</body>
+</html>

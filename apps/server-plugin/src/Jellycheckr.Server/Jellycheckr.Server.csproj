@@ -1,0 +1,164 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Jellycheckr.Server</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Version Condition="'$(Version)' == ''">0.1.0</Version>
+
+    <RepoRoot>$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../..'))))</RepoRoot>
+    <WebClientDir>$(RepoRoot)apps/web-client</WebClientDir>
+    <ConfigUiDir>$(RepoRoot)apps/config-ui</ConfigUiDir>
+    <JellycheckrEmbeddedBuildDir>$([MSBuild]::EnsureTrailingSlash('$(BaseIntermediateOutputPath)jellycheckr-embedded'))</JellycheckrEmbeddedBuildDir>
+    <JellycheckrArtifactsDir Condition="'$(JellycheckrArtifactsDir)' == ''">$(RepoRoot)apps/server-plugin/artifacts/</JellycheckrArtifactsDir>
+
+    <JellycheckrBuildEmbeddedAssets Condition="'$(JellycheckrBuildEmbeddedAssets)' == ''">true</JellycheckrBuildEmbeddedAssets>
+    <JellycheckrCreatePluginZip Condition="'$(JellycheckrCreatePluginZip)' == ''">true</JellycheckrCreatePluginZip>
+
+    <JellycheckrWebClientRestoreStamp>$(WebClientDir)/node_modules/.jellycheckr.restore.stamp</JellycheckrWebClientRestoreStamp>
+    <JellycheckrConfigUiRestoreStamp>$(ConfigUiDir)/node_modules/.jellycheckr.restore.stamp</JellycheckrConfigUiRestoreStamp>
+    <JellycheckrWebClientDistBundle>$(WebClientDir)/dist/jellycheckr-web.bundle.js</JellycheckrWebClientDistBundle>
+    <JellycheckrConfigUiDistBundle>$(ConfigUiDir)/dist/jellycheckr-config-ui.bundle.js</JellycheckrConfigUiDistBundle>
+    <JellycheckrEmbeddedWebBundle>$(JellycheckrEmbeddedBuildDir)jellycheckr-web.js</JellycheckrEmbeddedWebBundle>
+    <JellycheckrEmbeddedConfigUiBundle>$(JellycheckrEmbeddedBuildDir)jellycheckr-config-ui.js</JellycheckrEmbeddedConfigUiBundle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <JellycheckrWebClientBundleInputs Include="$(WebClientDir)/src/**/*" />
+    <JellycheckrWebClientBundleInputs Include="$(WebClientDir)/package.json;$(WebClientDir)/package-lock.json;$(WebClientDir)/tsconfig.json" />
+    <JellycheckrConfigUiBundleInputs Include="$(ConfigUiDir)/src/**/*" />
+    <JellycheckrConfigUiBundleInputs Include="$(ConfigUiDir)/package.json;$(ConfigUiDir)/package-lock.json;$(ConfigUiDir)/tsconfig.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Jellyfin.Controller" Version="10.9.11">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Jellyfin.Model" Version="10.9.11">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\..\packages\contracts\csharp\Aysw.Contracts.cs" Link="Contracts\Aysw.Contracts.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Configuration\configPage.html" />
+    <None Remove="Configuration\configUiHost.html" />
+    <EmbeddedResource Include="Configuration\configPage.html" />
+    <EmbeddedResource Include="Configuration\configUiHost.html" Link="Web\jellycheckr-config-ui-host.html" />
+    <EmbeddedResource Include="$(JellycheckrEmbeddedWebBundle)" Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+      <Link>Web\jellycheckr-web.js</Link>
+      <LogicalName>$(RootNamespace).Web.jellycheckr-web.js</LogicalName>
+      <ManifestResourceName>$(RootNamespace).Web.jellycheckr-web.js</ManifestResourceName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="$(JellycheckrEmbeddedConfigUiBundle)" Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+      <Link>Web\jellycheckr-config-ui.js</Link>
+      <LogicalName>$(RootNamespace).Web.jellycheckr-config-ui.js</LogicalName>
+      <ManifestResourceName>$(RootNamespace).Web.jellycheckr-config-ui.js</ManifestResourceName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <Target
+    Name="JellycheckrEnsureNodeTooling"
+    Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Exec Command="node --version" IgnoreExitCode="true" StandardOutputImportance="Low">
+      <Output TaskParameter="ExitCode" PropertyName="JellycheckrNodeExitCode" />
+    </Exec>
+    <Error
+      Condition="'$(JellycheckrNodeExitCode)' != '0'"
+      Text="Node.js is required to build embedded Jellycheckr frontend assets. Install Node.js and retry, or use /p:JellycheckrBuildEmbeddedAssets=false for backend-only builds." />
+
+    <Exec Command="npm --version" IgnoreExitCode="true" StandardOutputImportance="Low">
+      <Output TaskParameter="ExitCode" PropertyName="JellycheckrNpmExitCode" />
+    </Exec>
+    <Error
+      Condition="'$(JellycheckrNpmExitCode)' != '0'"
+      Text="npm is required to build embedded Jellycheckr frontend assets. Install npm and retry, or use /p:JellycheckrBuildEmbeddedAssets=false for backend-only builds." />
+  </Target>
+
+  <Target
+    Name="JellycheckrRestoreWebClientDependencies"
+    DependsOnTargets="JellycheckrEnsureNodeTooling"
+    Inputs="$(WebClientDir)/package.json;$(WebClientDir)/package-lock.json"
+    Outputs="$(JellycheckrWebClientRestoreStamp)"
+    Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Message Importance="High" Text="[Jellycheckr] Restoring web-client dependencies (npm ci)..." />
+    <Exec WorkingDirectory="$(WebClientDir)" Command="npm ci --workspaces=false" />
+    <Touch Files="$(JellycheckrWebClientRestoreStamp)" AlwaysCreate="true" />
+  </Target>
+
+  <Target
+    Name="JellycheckrRestoreConfigUiDependencies"
+    DependsOnTargets="JellycheckrEnsureNodeTooling"
+    Inputs="$(ConfigUiDir)/package.json;$(ConfigUiDir)/package-lock.json"
+    Outputs="$(JellycheckrConfigUiRestoreStamp)"
+    Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Message Importance="High" Text="[Jellycheckr] Restoring config-ui dependencies (npm ci)..." />
+    <Exec WorkingDirectory="$(ConfigUiDir)" Command="npm ci" />
+    <Touch Files="$(JellycheckrConfigUiRestoreStamp)" AlwaysCreate="true" />
+  </Target>
+
+  <Target
+    Name="JellycheckrBuildWebClientBundle"
+    DependsOnTargets="JellycheckrRestoreWebClientDependencies"
+    Inputs="@(JellycheckrWebClientBundleInputs)"
+    Outputs="$(JellycheckrEmbeddedWebBundle)"
+    Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Message Importance="High" Text="[Jellycheckr] Building embedded web-client bundle..." />
+    <Exec WorkingDirectory="$(WebClientDir)" Command="npm run build:bundle" />
+    <Error Condition="!Exists('$(JellycheckrWebClientDistBundle)')" Text="Expected web-client bundle was not produced: $(JellycheckrWebClientDistBundle)" />
+    <MakeDir Directories="$(JellycheckrEmbeddedBuildDir)" />
+    <Copy SourceFiles="$(JellycheckrWebClientDistBundle)" DestinationFiles="$(JellycheckrEmbeddedWebBundle)" />
+  </Target>
+
+  <Target
+    Name="JellycheckrBuildConfigUiBundle"
+    DependsOnTargets="JellycheckrRestoreConfigUiDependencies"
+    Inputs="@(JellycheckrConfigUiBundleInputs)"
+    Outputs="$(JellycheckrEmbeddedConfigUiBundle)"
+    Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Message Importance="High" Text="[Jellycheckr] Building embedded config-ui bundle..." />
+    <Exec WorkingDirectory="$(ConfigUiDir)" Command="npm run build:bundle" />
+    <Error Condition="!Exists('$(JellycheckrConfigUiDistBundle)')" Text="Expected config-ui bundle was not produced: $(JellycheckrConfigUiDistBundle)" />
+    <MakeDir Directories="$(JellycheckrEmbeddedBuildDir)" />
+    <Copy SourceFiles="$(JellycheckrConfigUiDistBundle)" DestinationFiles="$(JellycheckrEmbeddedConfigUiBundle)" />
+  </Target>
+
+  <Target
+    Name="JellycheckrBuildEmbeddedAssets"
+    DependsOnTargets="JellycheckrBuildWebClientBundle;JellycheckrBuildConfigUiBundle"
+    Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(JellycheckrEmbeddedWebBundle)')" Text="Embedded web-client bundle is missing: $(JellycheckrEmbeddedWebBundle)" />
+    <Error Condition="!Exists('$(JellycheckrEmbeddedConfigUiBundle)')" Text="Embedded config-ui bundle is missing: $(JellycheckrEmbeddedConfigUiBundle)" />
+  </Target>
+
+  <Target
+    Name="JellycheckrBuildEmbeddedAssetsBeforeInnerBuilds"
+    BeforeTargets="DispatchToInnerBuilds"
+    DependsOnTargets="JellycheckrBuildEmbeddedAssets"
+    Condition="'$(IsCrossTargetingBuild)' == 'true' and '$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'" />
+
+  <Target
+    Name="JellycheckrEnsureEmbeddedAssetsForCompile"
+    BeforeTargets="PrepareResourceNames;CoreCompile"
+    DependsOnTargets="JellycheckrBuildEmbeddedAssets"
+    Condition="'$(TargetFramework)' != '' and '$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'" />
+
+  <Target
+    Name="JellycheckrPackagePluginZip"
+    AfterTargets="Publish"
+    Condition="'$(TargetFramework)' == 'net8.0' and '$(JellycheckrCreatePluginZip)' == 'true'">
+    <PropertyGroup>
+      <JellycheckrPluginZipPath>$(JellycheckrArtifactsDir)jellycheckr-server-plugin-$(Version).zip</JellycheckrPluginZipPath>
+    </PropertyGroup>
+
+    <MakeDir Directories="$(JellycheckrArtifactsDir)" />
+    <Delete Files="$(JellycheckrPluginZipPath)" Condition="Exists('$(JellycheckrPluginZipPath)')" />
+    <ZipDirectory SourceDirectory="$(PublishDir)" DestinationFile="$(JellycheckrPluginZipPath)" />
+    <Message Importance="High" Text="[Jellycheckr] Created plugin zip: $(JellycheckrPluginZipPath)" />
+  </Target>
+</Project>

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jellycheckr.local/schemas/aysw.schema.json",
+  "title": "AyswConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "enabled",
+    "episodeThreshold",
+    "minutesThreshold",
+    "interactionQuietSeconds",
+    "promptTimeoutSeconds",
+    "cooldownMinutes",
+    "enforcementMode",
+    "serverFallbackEpisodeThreshold",
+    "serverFallbackMinutesThreshold",
+    "serverFallbackTriggerMode",
+    "serverFallbackInactivityMinutes",
+    "serverFallbackPauseBeforeStop",
+    "serverFallbackPauseGraceSeconds",
+    "serverFallbackSendMessageBeforePause",
+    "serverFallbackClientMessage",
+    "serverFallbackDryRun",
+    "debugLogging",
+    "developerMode",
+    "developerPromptAfterSeconds",
+    "schemaVersion"
+  ],
+  "properties": {
+    "enabled": { "type": "boolean" },
+    "episodeThreshold": { "type": "integer", "minimum": 1 },
+    "minutesThreshold": { "type": "integer", "minimum": 1 },
+    "interactionQuietSeconds": { "type": "integer", "minimum": 5 },
+    "promptTimeoutSeconds": { "type": "integer", "minimum": 10 },
+    "cooldownMinutes": { "type": "integer", "minimum": 0 },
+    "enforcementMode": {
+      "type": "string",
+      "enum": ["None", "WebOnly", "ServerFallback"]
+    },
+    "serverFallbackEpisodeThreshold": { "type": "integer", "minimum": 0 },
+    "serverFallbackMinutesThreshold": { "type": "integer", "minimum": 0 },
+    "serverFallbackTriggerMode": {
+      "type": "string",
+      "enum": ["Any", "All"]
+    },
+    "serverFallbackInactivityMinutes": { "type": "integer", "minimum": 1 },
+    "serverFallbackPauseBeforeStop": { "type": "boolean" },
+    "serverFallbackPauseGraceSeconds": { "type": "integer", "minimum": 5 },
+    "serverFallbackSendMessageBeforePause": { "type": "boolean" },
+    "serverFallbackClientMessage": { "type": "string" },
+    "serverFallbackDryRun": { "type": "boolean" },
+    "debugLogging": { "type": "boolean" },
+    "developerMode": { "type": "boolean" },
+    "developerPromptAfterSeconds": { "type": "integer", "minimum": 1 },
+    "schemaVersion": { "type": "integer", "minimum": 1 }
+  }
+}
