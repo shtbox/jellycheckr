@@ -51,3 +51,8 @@ Override during build/publish with `/p:Version=<version>`.
 
 This v1 implementation is designed for Jellyfin server/plugin patterns and Jellyfin Web.
 Validated compatibility is documented in `docs/dev-notes.md`.
+
+## Debugging Mode
+### HUD Debug Display
+<img width="1971" height="1109" alt="image" src="https://github.com/user-attachments/assets/e3514841-02eb-4cd4-8269-0debb6aa603c" />
+
