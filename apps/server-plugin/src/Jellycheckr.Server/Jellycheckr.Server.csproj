@@ -30,7 +30,10 @@
     <JellycheckrConfigUiBundleInputs Include="$(ConfigUiDir)/src/**/*" />
     <JellycheckrConfigUiBundleInputs Include="$(ConfigUiDir)/package.json;$(ConfigUiDir)/package-lock.json;$(ConfigUiDir)/tsconfig.json" />
   </ItemGroup>
-
+    <ItemGroup>
+        <None Include="..\..\README.md" />
+        <None Include="..\logo.png" CopyToOutputDirectory="Always" />
+    </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Jellyfin.Controller" Version="10.9.11">
