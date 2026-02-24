@@ -7,6 +7,10 @@
 - Jellyfin Web client module (`apps/web-client`)
 - Embedded plugin configuration UI (`apps/config-ui`)
 
+> [!NOTE]
+> This plugin relies on the Jellyfin File Transformation plugin:
+> https://github.com/IAmParadox27/jellyfin-plugin-file-transformation/tree/main
+
 ## Web Client Example
 <img width="auto" height="auto" alt="image" src="https://github.com/user-attachments/assets/5606b76f-225b-4fca-97e0-b1458db4b64d" />
 
@@ -18,7 +22,6 @@
 - `apps/config-ui` - Preact configuration UI embedded into the plugin
 - `packages/contracts` - shared API/config contracts
 - `docs` - architecture, API, configuration, and developer notes
-- `tools/scripts` - helper build/install scripts
 
 ## Quick Start
 
