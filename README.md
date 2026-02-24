@@ -1,4 +1,6 @@
-# jellycheckr
+<img width="200" height="200" alt="logo" src="https://github.com/user-attachments/assets/491af40a-605a-4094-bf42-f1d4f966ec92" />
+
+# Jellycheckr
 
 `jellycheckr` is a monorepo for an "Are You Still Watching?" feature focused on:
 - Jellyfin server plugin (`apps/server-plugin`)
@@ -7,6 +9,7 @@
 
 ## Web Client Example
 <img width="auto" height="auto" alt="image" src="https://github.com/user-attachments/assets/5606b76f-225b-4fca-97e0-b1458db4b64d" />
+
 
 ## Repository Layout
 
