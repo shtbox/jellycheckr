@@ -5,6 +5,9 @@
 - Jellyfin Web client module (`apps/web-client`)
 - Embedded plugin configuration UI (`apps/config-ui`)
 
+## Web Client Example
+<img width="auto" height="auto" alt="image" src="https://github.com/user-attachments/assets/5606b76f-225b-4fca-97e0-b1458db4b64d" />
+
 ## Repository Layout
 
 - `apps/server-plugin` - .NET 8 Jellyfin plugin backend (policy/config/session API)
