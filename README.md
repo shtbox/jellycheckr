@@ -1,11 +1,15 @@
 <img width="200" height="200" alt="logo" src="https://github.com/user-attachments/assets/491af40a-605a-4094-bf42-f1d4f966ec92" />
 
 # Jellycheckr
-
 `jellycheckr` is a monorepo for an "Are You Still Watching?" feature focused on:
 - Jellyfin server plugin (`apps/server-plugin`)
 - Jellyfin Web client module (`apps/web-client`)
 - Embedded plugin configuration UI (`apps/config-ui`)
+
+## Installation
+1. Add `https://shtbox.io/jellycheckr/manifest.json` as a plugin source repository on your Jellyfin server.
+2. Find "Jellycheckr AYSW" in the list and install it. Configuration options available in plugin settings.
+
 
 > [!NOTE]
 > This plugin relies on the Jellyfin File Transformation plugin:
