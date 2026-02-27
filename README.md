@@ -12,8 +12,9 @@
 
 
 > [!NOTE]
-> This plugin relies on the Jellyfin File Transformation plugin:
+> This plugin relies on the Jellyfin File Transformation plugin for web clients if you wish to use the "pretty" popup:
 > https://github.com/IAmParadox27/jellyfin-plugin-file-transformation/tree/main
+> When this plugin is missing it will fallback to Server Side Only mode which will pause play with an use the SendMessage command to the client. 
 
 ## Web Client Example
 <img width="auto" height="auto" alt="image" src="https://github.com/user-attachments/assets/5606b76f-225b-4fca-97e0-b1458db4b64d" />
