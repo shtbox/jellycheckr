@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using Jellycheckr.Server.Infrastructure;
 using Jellycheckr.Server.Models;
 using Microsoft.Extensions.Logging;
 
@@ -16,12 +15,10 @@ public interface ISessionStateStore
 public sealed class SessionStateStore : ISessionStateStore
 {
     private readonly ConcurrentDictionary<string, SessionState> _states = new(StringComparer.OrdinalIgnoreCase);
-    private readonly IConfigService _configService;
     private readonly ILogger<SessionStateStore> _logger;
 
-    public SessionStateStore(IConfigService configService, ILogger<SessionStateStore> logger)
+    public SessionStateStore(ILogger<SessionStateStore> logger)
     {
-        _configService = configService;
         _logger = logger;
     }
 
@@ -36,16 +33,14 @@ public sealed class SessionStateStore : ISessionStateStore
 
         if (created)
         {
-            _logger.LogInformation("[Jellycheckr] Created session state for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrInformation("[Jellycheckr] Created session state for session={SessionId}.", sessionId);
         }
 
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            _configService,
+        _logger.LogJellycheckrTrace(
             "SessionStateStore.GetOrCreate session={SessionId} created={Created} state={@State}",
             sessionId,
             created,
-            JellycheckrDiagnosticLogging.Describe(state));
+            state);
 
         return state;
     }
@@ -53,21 +48,17 @@ public sealed class SessionStateStore : ISessionStateStore
     public IReadOnlyCollection<SessionState> Snapshot()
     {
         var snapshot = _states.Values.ToArray();
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            _configService,
+        _logger.LogJellycheckrTrace(
             "SessionStateStore.Snapshot count={Count} sessions={@Sessions}",
             snapshot.Length,
-            snapshot.Select(JellycheckrDiagnosticLogging.Describe).ToArray());
+            snapshot);
         return snapshot;
     }
 
     public bool Remove(string sessionId)
     {
         var removed = _states.TryRemove(sessionId, out _);
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            _configService,
+        _logger.LogJellycheckrTrace(
             "SessionStateStore.Remove session={SessionId} removed={Removed}",
             sessionId,
             removed);
@@ -92,12 +83,10 @@ public sealed class SessionStateStore : ISessionStateStore
 
         if (removed > 0)
         {
-            _logger.LogInformation("[Jellycheckr] Pruned {Count} stale session state entries older than {CutoffUtc}.", removed, cutoffUtc);
+            _logger.LogJellycheckrInformation("[Jellycheckr] Pruned {Count} stale session state entries older than {CutoffUtc}.", removed, cutoffUtc);
         }
 
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            _configService,
+        _logger.LogJellycheckrTrace(
             "SessionStateStore.PruneOlderThan cutoffUtc={CutoffUtc} removed={Removed}",
             cutoffUtc,
             removed);
@@ -105,3 +94,4 @@ public sealed class SessionStateStore : ISessionStateStore
         return removed;
     }
 }
+

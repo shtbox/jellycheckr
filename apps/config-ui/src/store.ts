@@ -16,41 +16,45 @@ export const statusText = signal('Loading configuration...');
 export const statusTone = signal<StatusTone>('neutral');
 export const snapshot = signal(JSON.stringify(defaults));
 
-export const modeLabel = computed(() => {
-  switch (config.value.EnforcementMode) {
-    case 0: return 'None';
-    case 2: return 'ServerFallback';
-    default: return 'WebOnly';
+function minimumLogLevelLabel(minimumLogLevel: number): string {
+  switch (minimumLogLevel) {
+    case 0: return 'Trace';
+    case 1: return 'Debug';
+    case 2: return 'Information';
+    case 3: return 'Warning';
+    case 4: return 'Error';
+    case 5: return 'Critical';
+    case 6: return 'None';
+    default: return 'Warning';
   }
-});
+}
 
 export const summary = computed(() => {
   const c = config.value;
-  const fallbackThresholdSummary =
-    c.ServerFallbackEpisodeThreshold > 0 && c.ServerFallbackMinutesThreshold > 0
-      ? `${c.ServerFallbackEpisodeThreshold} eps ${c.ServerFallbackTriggerMode === 1 ? 'and' : 'or'} ${c.ServerFallbackMinutesThreshold} min`
-      : c.ServerFallbackEpisodeThreshold > 0
-        ? `${c.ServerFallbackEpisodeThreshold} eps`
-        : c.ServerFallbackMinutesThreshold > 0
-          ? `${c.ServerFallbackMinutesThreshold} min`
-          : 'disabled';
+  const thresholdSummary = [
+    c.EnableEpisodeCheck ? `${c.EpisodeThreshold} eps` : null,
+    c.EnableTimerCheck ? `${c.MinutesThreshold} min` : null
+  ].filter(Boolean).join(' or ') || 'disabled';
   const parts = [
-    `${c.EpisodeThreshold} eps or ${c.MinutesThreshold} min`,
+    `checks ${thresholdSummary}`,
     `quiet ${c.InteractionQuietSeconds}s`,
     `timeout ${c.PromptTimeoutSeconds}s`,
-    `cooldown ${c.CooldownMinutes}m`
+    `cooldown ${c.CooldownMinutes}m`,
+    `logs ${minimumLogLevelLabel(c.MinimumLogLevel)}+`
   ];
 
   if (c.DeveloperMode) {
     parts.push(`dev ${Math.max(1, c.DeveloperPromptAfterSeconds)}s`);
   }
-  if (c.EnforcementMode === 2) {
-    parts.push(`fallback ${fallbackThresholdSummary}`);
+  if (c.EnableServerFallback) {
+    parts.push('fallback on');
     parts.push(`inactive ${c.ServerFallbackInactivityMinutes}m`);
     parts.push(c.ServerFallbackPauseBeforeStop ? `pause ${c.ServerFallbackPauseGraceSeconds}s` : 'direct stop');
     if (c.ServerFallbackDryRun) {
       parts.push('dry-run');
     }
+  } else {
+    parts.push('fallback off');
   }
 
   return parts.join(' | ');
@@ -71,7 +75,7 @@ export function updateField<K extends keyof PluginConfig>(key: K, value: PluginC
   const nextConfig = { ...config.value, [key]: value };
   config.value = nextConfig;
   dirty.value = JSON.stringify(nextConfig) !== snapshot.value;
-  setAdminVerboseLogging(nextConfig.DeveloperMode || nextConfig.DebugLogging);
+  setAdminVerboseLogging(nextConfig.DeveloperMode);
   adminDebug('Field updated', {
     key,
     value,
@@ -109,7 +113,7 @@ export async function loadConfig(): Promise<void> {
       adminDebug('Raw plugin configuration loaded', raw);
     }
     const normalized = normalize(raw);
-    setAdminVerboseLogging(normalized.DeveloperMode || normalized.DebugLogging);
+    setAdminVerboseLogging(normalized.DeveloperMode);
     config.value = normalized;
     markSnapshot(normalized);
     adminDebug('Normalized plugin configuration applied', normalized);
@@ -141,7 +145,7 @@ export async function saveConfig(ev?: Event): Promise<void> {
   dashboard?.showLoadingMsg?.();
 
   try {
-    const payload = { ...config.value, SchemaVersion: 2 };
+    const payload = { ...config.value, SchemaVersion: 3 };
     adminDebug('Saving plugin configuration payload', payload);
     let savedConfig: any = null;
     let genericResult: any = null;
@@ -174,10 +178,10 @@ export async function saveConfig(ev?: Event): Promise<void> {
     dirty.value = true;
     setStatus('Failed to save configuration.', 'error');
     adminWarn('Failed to save configuration', err);
-    dashboard?.hideLoadingMsg?.();
     dashboard?.alert?.('Failed to save configuration.');
   } finally {
     saving.value = false;
+    dashboard?.hideLoadingMsg?.();
   }
 }
 

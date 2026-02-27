@@ -136,12 +136,14 @@ export async function mountAysw(player: PlayerAdapter): Promise<AyswModule> {
     sessionId,
     config: {
       enabled: config.enabled,
+      enableEpisodeCheck: config.enableEpisodeCheck,
+      enableTimerCheck: config.enableTimerCheck,
+      enableServerFallback: config.enableServerFallback,
       episodeThreshold: config.episodeThreshold,
       minutesThreshold: config.minutesThreshold,
       interactionQuietSeconds: config.interactionQuietSeconds,
       promptTimeoutSeconds: config.promptTimeoutSeconds,
       cooldownMinutes: config.cooldownMinutes,
-      enforcementMode: config.enforcementMode,
       debugLogging: config.debugLogging,
       developerMode: config.developerMode
     }
@@ -213,8 +215,12 @@ export async function mountAysw(player: PlayerAdapter): Promise<AyswModule> {
     const currentItem = player.getCurrentItem();
     state = registerItemTransition(state, now, currentItem, config);
     const minutesWithoutInteraction = (now - state.lastInteractionTs) / 60000;
-    const episodeThresholdReached = state.episodeTransitionsSinceAck >= config.episodeThreshold;
-    const timeThresholdReached = minutesWithoutInteraction >= config.minutesThreshold;
+    const episodeThresholdReached =
+      config.enableEpisodeCheck &&
+      state.episodeTransitionsSinceAck >= config.episodeThreshold;
+    const timeThresholdReached =
+      config.enableTimerCheck &&
+      minutesWithoutInteraction >= config.minutesThreshold;
     const developerThresholdReached =
       Boolean(config.developerMode) &&
       now - state.lastPromptResetTs >= config.developerPromptAfterSeconds * 1000;
@@ -262,6 +268,8 @@ export async function mountAysw(player: PlayerAdapter): Promise<AyswModule> {
         timeThresholdReached,
         developerThresholdReached,
         minutesWithoutInteraction,
+        enableEpisodeCheck: config.enableEpisodeCheck,
+        enableTimerCheck: config.enableTimerCheck,
         minutesThreshold: config.minutesThreshold,
         developerMode: config.developerMode,
         developerPromptAfterSeconds: config.developerPromptAfterSeconds
@@ -568,17 +576,20 @@ function withSafeDefaults(config: EffectiveConfigResponse): EffectiveConfigRespo
     return Number.isFinite(value) ? value : fallback;
   };
 
+  const legacyEnforcementMode = String(pick("enforcementMode", "EnforcementMode", "WebOnly"));
+
   return {
     enabled: pick("enabled", "Enabled", true),
+    enableEpisodeCheck: Boolean(pick("enableEpisodeCheck", "EnableEpisodeCheck", true)),
+    enableTimerCheck: Boolean(pick("enableTimerCheck", "EnableTimerCheck", true)),
+    enableServerFallback: Boolean(
+      pick("enableServerFallback", "EnableServerFallback", legacyEnforcementMode === "ServerFallback")
+    ),
     episodeThreshold: Math.max(pickNumber("episodeThreshold", "EpisodeThreshold", 3), 1),
     minutesThreshold: Math.max(pickNumber("minutesThreshold", "MinutesThreshold", 120), 1),
     interactionQuietSeconds: Math.max(pickNumber("interactionQuietSeconds", "InteractionQuietSeconds", 45), 5),
     promptTimeoutSeconds: Math.max(pickNumber("promptTimeoutSeconds", "PromptTimeoutSeconds", 60), 10),
     cooldownMinutes: Math.max(pickNumber("cooldownMinutes", "CooldownMinutes", 30), 0),
-    enforcementMode: (pick("enforcementMode", "EnforcementMode", "WebOnly") as any) ?? "WebOnly",
-    serverFallbackEpisodeThreshold: Math.max(pickNumber("serverFallbackEpisodeThreshold", "ServerFallbackEpisodeThreshold", 3), 0),
-    serverFallbackMinutesThreshold: Math.max(pickNumber("serverFallbackMinutesThreshold", "ServerFallbackMinutesThreshold", 120), 0),
-    serverFallbackTriggerMode: (pick("serverFallbackTriggerMode", "ServerFallbackTriggerMode", "Any") as any) ?? "Any",
     serverFallbackInactivityMinutes: Math.max(pickNumber("serverFallbackInactivityMinutes", "ServerFallbackInactivityMinutes", 30), 1),
     serverFallbackPauseBeforeStop: Boolean(pick("serverFallbackPauseBeforeStop", "ServerFallbackPauseBeforeStop", true)),
     serverFallbackPauseGraceSeconds: Math.max(pickNumber("serverFallbackPauseGraceSeconds", "ServerFallbackPauseGraceSeconds", 45), 5),

@@ -5,7 +5,7 @@
 `jellycheckr` is a monorepo for an "Are You Still Watching?" feature focused on:
 - Jellyfin server plugin (`apps/server-plugin`)
 - Jellyfin Web client module (`apps/web-client`)
-- Embedded plugin configuration UI (`apps/config-ui`)
+- Plugin configuration UI (`apps/config-ui`)
 
 > [!NOTE]
 > This plugin relies on the Jellyfin File Transformation plugin:
@@ -19,19 +19,20 @@
 
 - `apps/server-plugin` - .NET 8 Jellyfin plugin backend (policy/config/session API)
 - `apps/web-client` - TypeScript web module (prompt UX, interactions, ack calls)
-- `apps/config-ui` - Preact configuration UI embedded into the plugin
+- `apps/config-ui` - Preact + Tailwind configuration UI published into plugin `web/` assets
 - `packages/contracts` - shared API/config contracts
 - `docs` - architecture, API, configuration, and developer notes
 
 ## Quick Start
 
-### 1) Build / publish the plugin (includes embedded web bundles)
+### 1) Build / publish the plugin (includes plugin-folder web assets)
 
-- Build (backend + embedded web/config UI):
+- Build (backend + web/config UI bundles):
   - `dotnet build apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.csproj`
 - Publish (`net8.0`) and create plugin zip:
   - `dotnet publish apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.csproj -c Release -f net8.0`
   - Zip artifact: `apps/server-plugin/artifacts/jellycheckr-server-plugin-0.1.0.zip`
+  - The packaged zip includes Jellyfin plugin metadata (`meta.json`) and plugin `web/` assets (`jellycheckr-web.js`, config UI host/js/css).
 
 ### 2) Install for local dev
 

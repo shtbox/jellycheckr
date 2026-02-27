@@ -4,7 +4,6 @@ import { PAGE_ID, ROOT_ID } from './constants';
 import { defaults } from './configSchema';
 import { App } from './components/App';
 import { dirty, loadConfig, loading, snapshot } from './store';
-import { ensureStyles } from './styles';
 
 const DEFAULT_SNAPSHOT = JSON.stringify(defaults);
 
@@ -13,8 +12,6 @@ export function bind(): void {
   const root = document.getElementById(ROOT_ID);
 
   if (!root) return;
-
-  ensureStyles();
 
   if (!(root as any).__jellycheckrMounted) {
     render(<App />, root);

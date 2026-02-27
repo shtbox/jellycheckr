@@ -17,9 +17,9 @@ public sealed class ServerFallbackDecisionEngine : IServerFallbackDecisionEngine
             return ServerFallbackDecision.Skip("disabled");
         }
 
-        if (config.EnforcementMode != EnforcementMode.ServerFallback)
+        if (!config.EnableServerFallback)
         {
-            return ServerFallbackDecision.Skip("mode_not_server_fallback");
+            return ServerFallbackDecision.Skip("fallback_disabled");
         }
 
         if (state.FallbackPhase == ServerFallbackPhase.PauseGracePending)
@@ -58,23 +58,19 @@ public sealed class ServerFallbackDecisionEngine : IServerFallbackDecisionEngine
             }
         }
 
-        var episodeThresholdEnabled = config.ServerFallbackEpisodeThreshold > 0;
-        var minutesThresholdEnabled = config.ServerFallbackMinutesThreshold > 0;
+        var episodeThresholdEnabled = config.EnableEpisodeCheck;
+        var minutesThresholdEnabled = config.EnableTimerCheck;
         if (!episodeThresholdEnabled && !minutesThresholdEnabled)
         {
             return ServerFallbackDecision.Skip("thresholds_disabled");
         }
 
         var episodesReached = episodeThresholdEnabled
-            && state.ServerFallbackEpisodeTransitionsSinceReset >= config.ServerFallbackEpisodeThreshold;
+            && state.ServerFallbackEpisodeTransitionsSinceReset >= config.EpisodeThreshold;
         var minutesPlayed = TimeSpan.FromTicks(Math.Max(0, state.ServerFallbackPlaybackTicksSinceReset)).TotalMinutes;
-        var minutesReached = minutesThresholdEnabled && minutesPlayed >= config.ServerFallbackMinutesThreshold;
+        var minutesReached = minutesThresholdEnabled && minutesPlayed >= config.MinutesThreshold;
 
-        var thresholdMet = config.ServerFallbackTriggerMode switch
-        {
-            ServerFallbackTriggerMode.All => (!episodeThresholdEnabled || episodesReached) && (!minutesThresholdEnabled || minutesReached),
-            _ => (episodeThresholdEnabled && episodesReached) || (minutesThresholdEnabled && minutesReached)
-        };
+        var thresholdMet = (episodeThresholdEnabled && episodesReached) || (minutesThresholdEnabled && minutesReached);
 
         if (!thresholdMet)
         {
@@ -98,7 +94,7 @@ public sealed class ServerFallbackDecisionEngine : IServerFallbackDecisionEngine
                 inactivityMinutes);
         }
 
-        var reason = $"threshold={config.ServerFallbackTriggerMode} inactivity={inactivityMinutes:F1}m";
+        var reason = $"threshold=or inactivity={inactivityMinutes:F1}m";
         return new ServerFallbackDecision(true, reason, minutesPlayed, state.ServerFallbackEpisodeTransitionsSinceReset, inactivityMinutes);
     }
 }

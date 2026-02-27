@@ -10,20 +10,20 @@ public sealed class ServerFallbackDecisionEngineTests
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-02-24T12:00:00Z");
 
     [Fact]
-    public void DoesNotTrigger_WhenModeIsNotServerFallback()
+    public void DoesNotTrigger_WhenFallbackDisabled()
     {
         var state = BaseState();
         var config = BaseConfig();
-        config.EnforcementMode = EnforcementMode.WebOnly;
+        config.EnableServerFallback = false;
 
         var decision = _engine.Evaluate(state, config, Now);
 
         Assert.False(decision.ShouldTrigger);
-        Assert.Equal("mode_not_server_fallback", decision.Reason);
+        Assert.Equal("fallback_disabled", decision.Reason);
     }
 
     [Fact]
-    public void Triggers_WhenEpisodeThresholdMet_AndInactive_ForAnyMode()
+    public void Triggers_WhenEpisodeThresholdMet_AndInactive()
     {
         var state = BaseState();
         state.ServerFallbackEpisodeTransitionsSinceReset = 3;
@@ -31,9 +31,27 @@ public sealed class ServerFallbackDecisionEngineTests
         state.LastInferredActivityUtc = Now.AddMinutes(-35);
 
         var config = BaseConfig();
-        config.ServerFallbackEpisodeThreshold = 3;
-        config.ServerFallbackMinutesThreshold = 120;
-        config.ServerFallbackTriggerMode = ServerFallbackTriggerMode.Any;
+        config.EnableEpisodeCheck = true;
+        config.EnableTimerCheck = false;
+        config.EpisodeThreshold = 3;
+        config.ServerFallbackInactivityMinutes = 30;
+
+        var decision = _engine.Evaluate(state, config, Now);
+
+        Assert.True(decision.ShouldTrigger);
+    }
+
+    [Fact]
+    public void Triggers_WhenMinutesThresholdMet_AndInactive()
+    {
+        var state = BaseState();
+        state.ServerFallbackPlaybackTicksSinceReset = TimeSpan.FromMinutes(121).Ticks;
+        state.LastInferredActivityUtc = Now.AddMinutes(-35);
+
+        var config = BaseConfig();
+        config.EnableEpisodeCheck = false;
+        config.EnableTimerCheck = true;
+        config.MinutesThreshold = 120;
         config.ServerFallbackInactivityMinutes = 30;
 
         var decision = _engine.Evaluate(state, config, Now);
@@ -58,22 +76,41 @@ public sealed class ServerFallbackDecisionEngineTests
     }
 
     [Fact]
-    public void Triggers_WhenBothThresholdsMet_ForAllMode()
+    public void Triggers_WhenEitherThresholdMet_WithOrSemantics()
     {
         var state = BaseState();
-        state.ServerFallbackEpisodeTransitionsSinceReset = 4;
+        state.ServerFallbackEpisodeTransitionsSinceReset = 0;
         state.ServerFallbackPlaybackTicksSinceReset = TimeSpan.FromMinutes(130).Ticks;
         state.LastInferredActivityUtc = Now.AddMinutes(-45);
 
         var config = BaseConfig();
-        config.ServerFallbackTriggerMode = ServerFallbackTriggerMode.All;
-        config.ServerFallbackEpisodeThreshold = 3;
-        config.ServerFallbackMinutesThreshold = 120;
+        config.EnableEpisodeCheck = true;
+        config.EnableTimerCheck = true;
+        config.EpisodeThreshold = 3;
+        config.MinutesThreshold = 120;
         config.ServerFallbackInactivityMinutes = 30;
 
         var decision = _engine.Evaluate(state, config, Now);
 
         Assert.True(decision.ShouldTrigger);
+    }
+
+    [Fact]
+    public void DoesNotTrigger_WhenAllChecksDisabled()
+    {
+        var state = BaseState();
+        state.ServerFallbackPlaybackTicksSinceReset = TimeSpan.FromMinutes(999).Ticks;
+        state.ServerFallbackEpisodeTransitionsSinceReset = 999;
+        state.LastInferredActivityUtc = Now.AddHours(-2);
+
+        var config = BaseConfig();
+        config.EnableEpisodeCheck = false;
+        config.EnableTimerCheck = false;
+
+        var decision = _engine.Evaluate(state, config, Now);
+
+        Assert.False(decision.ShouldTrigger);
+        Assert.Equal("thresholds_disabled", decision.Reason);
     }
 
     [Fact]
@@ -101,9 +138,6 @@ public sealed class ServerFallbackDecisionEngineTests
         var config = BaseConfig();
         config.DeveloperMode = true;
         config.DeveloperPromptAfterSeconds = 15;
-        config.ServerFallbackEpisodeThreshold = 3;
-        config.ServerFallbackMinutesThreshold = 120;
-        config.ServerFallbackInactivityMinutes = 30;
 
         var decision = _engine.Evaluate(state, config, Now);
 
@@ -145,11 +179,12 @@ public sealed class ServerFallbackDecisionEngineTests
         return new EffectiveConfigResponse
         {
             Enabled = true,
-            EnforcementMode = EnforcementMode.ServerFallback,
+            EnableEpisodeCheck = true,
+            EnableTimerCheck = true,
+            EnableServerFallback = true,
+            EpisodeThreshold = 3,
+            MinutesThreshold = 120,
             CooldownMinutes = 30,
-            ServerFallbackEpisodeThreshold = 3,
-            ServerFallbackMinutesThreshold = 120,
-            ServerFallbackTriggerMode = ServerFallbackTriggerMode.Any,
             ServerFallbackInactivityMinutes = 30,
             ServerFallbackPauseBeforeStop = true,
             ServerFallbackPauseGraceSeconds = 45,

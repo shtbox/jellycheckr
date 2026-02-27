@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .jc-hostFallback {
+    @apply m-2 rounded-xl border border-rose-300/30 bg-rose-300/10 p-4 text-sm leading-relaxed text-rose-100;
+  }
+}

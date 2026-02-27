@@ -66,9 +66,10 @@ export function shouldPrompt(
     return false;
   }
 
-  const episodeThresholdReached = state.episodeTransitionsSinceAck >= config.episodeThreshold;
+  const episodeThresholdReached =
+    config.enableEpisodeCheck && state.episodeTransitionsSinceAck >= config.episodeThreshold;
   const minutesWithoutInteraction = (nowTs - state.lastInteractionTs) / 60000;
-  const timeThresholdReached = minutesWithoutInteraction >= config.minutesThreshold;
+  const timeThresholdReached = config.enableTimerCheck && minutesWithoutInteraction >= config.minutesThreshold;
   const developerThresholdReached =
     config.developerMode &&
     nowTs - state.lastPromptResetTs >= config.developerPromptAfterSeconds * 1000;

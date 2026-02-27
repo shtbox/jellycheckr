@@ -38,6 +38,8 @@ public sealed class SessionState
     public DateTimeOffset? PauseGraceDeadlineUtc { get; set; }
     public string? LastFallbackAction { get; set; }
     public string? LastFallbackActionResult { get; set; }
+    public string? LastFallbackDecisionKey { get; set; }
+    public DateTimeOffset? LastFallbackDecisionLoggedUtc { get; set; }
 }
 
 public enum ServerFallbackPhase

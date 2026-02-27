@@ -70,7 +70,7 @@ public sealed class JellyfinSessionCommandDispatcher : IJellyfinSessionCommandDi
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[Jellycheckr] Failed to send message command to session={SessionId}.", sessionId);
+            _logger.LogJellycheckrWarning(ex, "[Jellycheckr] Failed to send message command to session={SessionId}.", sessionId);
             return false;
         }
     }
@@ -103,7 +103,7 @@ public sealed class JellyfinSessionCommandDispatcher : IJellyfinSessionCommandDi
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[Jellycheckr] Failed to send playstate command {Command} to session={SessionId}.", command, sessionId);
+            _logger.LogJellycheckrWarning(ex, "[Jellycheckr] Failed to send playstate command {Command} to session={SessionId}.", command, sessionId);
             return false;
         }
     }
@@ -140,3 +140,4 @@ public sealed class JellyfinSessionCommandDispatcher : IJellyfinSessionCommandDi
         }
     }
 }
+

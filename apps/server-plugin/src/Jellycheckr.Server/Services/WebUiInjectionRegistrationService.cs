@@ -12,29 +12,43 @@ public sealed class WebUiInjectionRegistrationService : IHostedService
     private static readonly Guid TransformationId = Guid.Parse("8b8d73b4-8a11-4a3b-9f15-57fe8f0e7f4b");
 
     private readonly ILogger<WebUiInjectionRegistrationService> _logger;
+    private readonly IWebUiInjectionState _injectionState;
 
-    public WebUiInjectionRegistrationService(ILogger<WebUiInjectionRegistrationService> logger)
+    public WebUiInjectionRegistrationService(
+        ILogger<WebUiInjectionRegistrationService> logger,
+        IWebUiInjectionState injectionState)
     {
         _logger = logger;
+        _injectionState = injectionState;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        if (!EmbeddedWebClientBundle.TryGetBundle(out _))
+        _injectionState.SetRegistered(false);
+
+        if (!PluginWebAssetRegistry.Exists(PluginWebAssetRegistry.WebClientBundleKey, out var webBundlePath))
         {
-            _logger.LogWarning("[Jellycheckr] Embedded web bundle was not found; web UI injection may succeed but serve 404.");
+            _logger.LogJellycheckrWarning(
+                "[Jellycheckr] Web bundle asset was not found at {WebBundlePath}; web UI injection may succeed but serve 404.",
+                webBundlePath);
         }
 
+        var registered = false;
         try
         {
-            if (TryRegisterFileTransformation())
+            registered = TryRegisterFileTransformation();
+            if (registered)
             {
-                _logger.LogInformation("[Jellycheckr] Registered Jellyfin Web index.html transformation for web client injection.");
+                _logger.LogJellycheckrInformation("[Jellycheckr] Registered Jellyfin Web index.html transformation for web client injection.");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[Jellycheckr] Failed to register File Transformation callback for web UI injection.");
+            _logger.LogJellycheckrWarning(ex, "[Jellycheckr] Failed to register File Transformation callback for web UI injection.");
+        }
+        finally
+        {
+            _injectionState.SetRegistered(registered);
         }
 
         return Task.CompletedTask;
@@ -51,7 +65,7 @@ public sealed class WebUiInjectionRegistrationService : IHostedService
 
         if (pluginInterfaceType is null)
         {
-            _logger.LogInformation("[Jellycheckr] File Transformation plugin not detected; skipping web UI injection registration.");
+            _logger.LogJellycheckrInformation("[Jellycheckr] File Transformation plugin not detected; skipping web UI injection registration.");
             return false;
         }
 
@@ -61,14 +75,14 @@ public sealed class WebUiInjectionRegistrationService : IHostedService
 
         if (registerMethod is null)
         {
-            _logger.LogWarning("[Jellycheckr] File Transformation plugin API was found but RegisterTransformation was missing.");
+            _logger.LogJellycheckrWarning("[Jellycheckr] File Transformation plugin API was found but RegisterTransformation was missing.");
             return false;
         }
 
         var payloadParameterType = registerMethod.GetParameters().SingleOrDefault()?.ParameterType;
         if (payloadParameterType is null)
         {
-            _logger.LogWarning("[Jellycheckr] File Transformation RegisterTransformation signature was unexpected.");
+            _logger.LogJellycheckrWarning("[Jellycheckr] File Transformation RegisterTransformation signature was unexpected.");
             return false;
         }
 
@@ -90,7 +104,7 @@ public sealed class WebUiInjectionRegistrationService : IHostedService
 
         if (parseMethod is null)
         {
-            _logger.LogWarning("[Jellycheckr] Could not create File Transformation payload; JObject.Parse was unavailable.");
+            _logger.LogJellycheckrWarning("[Jellycheckr] Could not create File Transformation payload; JObject.Parse was unavailable.");
             return false;
         }
 
@@ -99,3 +113,4 @@ public sealed class WebUiInjectionRegistrationService : IHostedService
         return true;
     }
 }
+

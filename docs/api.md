@@ -14,15 +14,14 @@ Response example:
 ```json
 {
   "enabled": true,
+  "enableEpisodeCheck": true,
+  "enableTimerCheck": true,
+  "enableServerFallback": true,
   "episodeThreshold": 3,
   "minutesThreshold": 120,
   "interactionQuietSeconds": 45,
   "promptTimeoutSeconds": 60,
   "cooldownMinutes": 30,
-  "enforcementMode": "WebOnly",
-  "serverFallbackEpisodeThreshold": 3,
-  "serverFallbackMinutesThreshold": 120,
-  "serverFallbackTriggerMode": "Any",
   "serverFallbackInactivityMinutes": 30,
   "serverFallbackPauseBeforeStop": true,
   "serverFallbackPauseGraceSeconds": 45,
@@ -32,8 +31,8 @@ Response example:
   "debugLogging": false,
   "developerMode": false,
   "developerPromptAfterSeconds": 15,
-  "version": 2,
-  "schemaVersion": 2
+  "version": 3,
+  "schemaVersion": 3
 }
 ```
 
@@ -108,6 +107,15 @@ Returns global plugin defaults and behavior settings.
 Accepts the same schema as admin config response.
 Validates and persists global defaults.
 
+## GET /Plugins/Aysw/web/*
+
+Plugin-served static web assets (also available under `/Plugins/jellycheckr/web/*`):
+
+- `/Plugins/Aysw/web/jellycheckr-web.js`
+- `/Plugins/Aysw/web/jellycheckr-config-ui.js`
+- `/Plugins/Aysw/web/jellycheckr-config-ui.css`
+- `/Plugins/Aysw/web/jellycheckr-config-ui-host.html`
+
 ## Native Client Behavior Note
 
-When `enforcementMode` is `ServerFallback`, stock native clients (for example Android TV / Firestick) do not receive the Jellycheckr web modal UI. The plugin instead uses server-side heuristics and Jellyfin pause/stop commands.
+When `enableServerFallback` is `true`, stock native clients (for example Android TV / Firestick) do not receive the Jellycheckr web modal UI. The plugin instead uses server-side heuristics and Jellyfin pause/stop commands.

@@ -49,4 +49,5 @@ sequenceDiagram
 - Policy thresholds are server-owned and returned as effective config.
 - Interaction quality is client-owned because server cannot infer user intent reliably.
 - Session state persistence is in-memory for v1; configuration persists to disk.
+- Plugin web assets are published into the plugin folder (`web/`) and served by plugin routes; only the dashboard config page shim remains embedded.
 - API contracts are versioned and mirrored through `packages/contracts`.

@@ -29,7 +29,7 @@ public sealed class ServerFallbackSessionSnapshotProvider : IServerFallbackSessi
         var sessionManager = _serviceProvider.GetService<ISessionManager>();
         if (sessionManager is null)
         {
-            _logger.LogWarning("[Jellycheckr] ISessionManager is unavailable; server fallback monitoring is disabled.");
+            _logger.LogJellycheckrWarning("[Jellycheckr] ISessionManager is unavailable; server fallback monitoring is disabled.");
             return Array.Empty<ServerObservedSessionSnapshot>();
         }
 
@@ -52,7 +52,7 @@ public sealed class ServerFallbackSessionSnapshotProvider : IServerFallbackSessi
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "[Jellycheckr] Failed to snapshot a Jellyfin session for server fallback.");
+                _logger.LogJellycheckrDebug(ex, "[Jellycheckr] Failed to snapshot a Jellyfin session for server fallback.");
             }
         }
 
@@ -184,3 +184,4 @@ public sealed class ServerObservedSessionSnapshot
     public DateTimeOffset? LastPlaybackCheckInUtc { get; set; }
     public DateTimeOffset? LastPausedUtc { get; set; }
 }
+

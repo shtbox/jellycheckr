@@ -1,9 +1,9 @@
 using Jellycheckr.Server.Models;
+using Jellycheckr.Server.Infrastructure;
 using Jellycheckr.Server.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using Jellycheckr.Server.Infrastructure;
 
 namespace Jellycheckr.Server.Controllers;
 
@@ -27,18 +27,24 @@ public sealed class AyswAdminController : ControllerBase
     {
         if (!IsAdmin())
         {
-            _logger.LogWarning("[Jellycheckr] Admin config GET forbidden for user {User}.", User.Identity?.Name ?? "(unknown)");
+            _logger.LogJellycheckrWarning("[Jellycheckr] Admin config GET forbidden for user {User}.", User.Identity?.Name ?? "(unknown)");
             return Forbid();
         }
 
-        var config = _configService.GetAdminConfig();
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            config,
-            "GET /admin/config user={User} config={@Config}",
-            User.Identity?.Name ?? "(unknown)",
-            JellycheckrDiagnosticLogging.Describe(config));
-        return Ok(config);
+        try
+        {
+            var config = _configService.GetAdminConfig();
+            _logger.LogJellycheckrTrace(
+                "GET /admin/config user={User} config={@Config}",
+                User.Identity?.Name ?? "(unknown)",
+                config);
+            return Ok(config);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogJellycheckrError(ex, "[Jellycheckr] Failed to load admin config for user {User}.", User.Identity?.Name ?? "(unknown)");
+            return StatusCode(500, new { error = "Failed to load admin config." });
+        }
     }
 
     [HttpPut("config")]
@@ -46,31 +52,28 @@ public sealed class AyswAdminController : ControllerBase
     {
         if (!IsAdmin())
         {
-            _logger.LogWarning("[Jellycheckr] Admin config PUT forbidden for user {User}.", User.Identity?.Name ?? "(unknown)");
+            _logger.LogJellycheckrWarning("[Jellycheckr] Admin config PUT forbidden for user {User}.", User.Identity?.Name ?? "(unknown)");
             return Forbid();
         }
 
         try
         {
-            _logger.LogInformation("[Jellycheckr] Admin config update requested by {User}.", User.Identity?.Name ?? "(unknown)");
-            JellycheckrDiagnosticLogging.Verbose(
-                _logger,
-                config,
-                "PUT /admin/config payload={@Config}",
-                JellycheckrDiagnosticLogging.Describe(config));
+            _logger.LogJellycheckrTrace("[Jellycheckr] Admin config update requested by {User}.", User.Identity?.Name ?? "(unknown)");
+            _logger.LogJellycheckrTrace("PUT /admin/config payload={@Config}", config);
 
             var updated = _configService.UpdateAdminConfig(config);
-            JellycheckrDiagnosticLogging.Verbose(
-                _logger,
-                updated,
-                "PUT /admin/config persistedConfig={@Config}",
-                JellycheckrDiagnosticLogging.Describe(updated));
+            _logger.LogJellycheckrTrace("PUT /admin/config persistedConfig={@Config}", updated);
             return Ok(updated);
         }
         catch (ArgumentOutOfRangeException ex)
         {
-            _logger.LogWarning(ex, "[Jellycheckr] Admin config validation failed.");
+            _logger.LogJellycheckrWarning(ex, "[Jellycheckr] Admin config validation failed.");
             return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogJellycheckrError(ex, "[Jellycheckr] Failed to persist admin config for user {User}.", User.Identity?.Name ?? "(unknown)");
+            return StatusCode(500, new { error = "Failed to persist admin config." });
         }
     }
 
@@ -81,3 +84,4 @@ public sealed class AyswAdminController : ControllerBase
                                        && c.Value.Equals("Administrator", StringComparison.OrdinalIgnoreCase));
     }
 }
+

@@ -3,15 +3,14 @@ export type ServerFallbackTriggerMode = "Any" | "All";
 
 export interface EffectiveConfigResponse {
   enabled: boolean;
+  enableEpisodeCheck: boolean;
+  enableTimerCheck: boolean;
+  enableServerFallback: boolean;
   episodeThreshold: number;
   minutesThreshold: number;
   interactionQuietSeconds: number;
   promptTimeoutSeconds: number;
   cooldownMinutes: number;
-  enforcementMode: EnforcementMode;
-  serverFallbackEpisodeThreshold: number;
-  serverFallbackMinutesThreshold: number;
-  serverFallbackTriggerMode: ServerFallbackTriggerMode;
   serverFallbackInactivityMinutes: number;
   serverFallbackPauseBeforeStop: boolean;
   serverFallbackPauseGraceSeconds: number;

@@ -1,20 +1,20 @@
 export type PluginConfig = {
   Enabled: boolean;
+  EnableEpisodeCheck: boolean;
+  EnableTimerCheck: boolean;
+  EnableServerFallback: boolean;
   EpisodeThreshold: number;
   MinutesThreshold: number;
   InteractionQuietSeconds: number;
   PromptTimeoutSeconds: number;
   CooldownMinutes: number;
-  EnforcementMode: number;
-  ServerFallbackEpisodeThreshold: number;
-  ServerFallbackMinutesThreshold: number;
-  ServerFallbackTriggerMode: number;
   ServerFallbackInactivityMinutes: number;
   ServerFallbackPauseBeforeStop: boolean;
   ServerFallbackPauseGraceSeconds: number;
   ServerFallbackSendMessageBeforePause: boolean;
   ServerFallbackClientMessage: string;
   ServerFallbackDryRun: boolean;
+  MinimumLogLevel: number;
   DebugLogging: boolean;
   DeveloperMode: boolean;
   DeveloperPromptAfterSeconds: number;

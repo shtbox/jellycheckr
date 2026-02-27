@@ -6,11 +6,20 @@
     <RootNamespace>Jellycheckr.Server</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Version Condition="'$(Version)' == ''">0.1.0</Version>
+    <JellyfinPackageVersion Condition="'$(JellyfinPackageVersion)' == ''">10.9.11</JellyfinPackageVersion>
+    <JellycheckrPluginGuid>a53af988-9d8f-4a7c-8d5f-f902fd90e4bd</JellycheckrPluginGuid>
+    <JellycheckrVersionCore4>$([System.Text.RegularExpressions.Regex]::Match('$(Version)', '^\d+\.\d+\.\d+\.\d+').Value)</JellycheckrVersionCore4>
+    <JellycheckrVersionCore3 Condition="'$(JellycheckrVersionCore4)' == ''">$([System.Text.RegularExpressions.Regex]::Match('$(Version)', '^\d+\.\d+\.\d+').Value)</JellycheckrVersionCore3>
+    <JellycheckrPluginRouteVersion Condition="'$(JellycheckrVersionCore4)' != ''">$(JellycheckrVersionCore4)</JellycheckrPluginRouteVersion>
+    <JellycheckrPluginRouteVersion Condition="'$(JellycheckrPluginRouteVersion)' == '' and '$(JellycheckrVersionCore3)' != ''">$(JellycheckrVersionCore3).0</JellycheckrPluginRouteVersion>
+    <JellycheckrTargetAbi Condition="'$(JellycheckrTargetAbi)' == ''">$(JellyfinPackageVersion).0</JellycheckrTargetAbi>
+    <AssemblyVersion>$(JellycheckrPluginRouteVersion)</AssemblyVersion>
+    <FileVersion>$(JellycheckrPluginRouteVersion)</FileVersion>
 
     <RepoRoot>$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../..'))))</RepoRoot>
     <WebClientDir>$(RepoRoot)apps/web-client</WebClientDir>
     <ConfigUiDir>$(RepoRoot)apps/config-ui</ConfigUiDir>
-    <JellycheckrEmbeddedBuildDir>$([MSBuild]::EnsureTrailingSlash('$(BaseIntermediateOutputPath)jellycheckr-embedded'))</JellycheckrEmbeddedBuildDir>
+    <JellycheckrWebAssetsBuildDir>$([MSBuild]::EnsureTrailingSlash('$(BaseIntermediateOutputPath)jellycheckr-web-assets'))</JellycheckrWebAssetsBuildDir>
     <JellycheckrArtifactsDir Condition="'$(JellycheckrArtifactsDir)' == ''">$(RepoRoot)apps/server-plugin/artifacts/</JellycheckrArtifactsDir>
 
     <JellycheckrBuildEmbeddedAssets Condition="'$(JellycheckrBuildEmbeddedAssets)' == ''">true</JellycheckrBuildEmbeddedAssets>
@@ -20,8 +29,13 @@
     <JellycheckrConfigUiRestoreStamp>$(ConfigUiDir)/node_modules/.jellycheckr.restore.stamp</JellycheckrConfigUiRestoreStamp>
     <JellycheckrWebClientDistBundle>$(WebClientDir)/dist/jellycheckr-web.bundle.js</JellycheckrWebClientDistBundle>
     <JellycheckrConfigUiDistBundle>$(ConfigUiDir)/dist/jellycheckr-config-ui.bundle.js</JellycheckrConfigUiDistBundle>
-    <JellycheckrEmbeddedWebBundle>$(JellycheckrEmbeddedBuildDir)jellycheckr-web.js</JellycheckrEmbeddedWebBundle>
-    <JellycheckrEmbeddedConfigUiBundle>$(JellycheckrEmbeddedBuildDir)jellycheckr-config-ui.js</JellycheckrEmbeddedConfigUiBundle>
+    <JellycheckrConfigUiDistStyles>$(ConfigUiDir)/dist/jellycheckr-config-ui.css</JellycheckrConfigUiDistStyles>
+    <JellycheckrConfigUiHostSource>$(MSBuildProjectDirectory)/Configuration/configUiHost.html</JellycheckrConfigUiHostSource>
+
+    <JellycheckrStagedWebClientBundle>$(JellycheckrWebAssetsBuildDir)jellycheckr-web.js</JellycheckrStagedWebClientBundle>
+    <JellycheckrStagedConfigUiBundle>$(JellycheckrWebAssetsBuildDir)jellycheckr-config-ui.js</JellycheckrStagedConfigUiBundle>
+    <JellycheckrStagedConfigUiStyles>$(JellycheckrWebAssetsBuildDir)jellycheckr-config-ui.css</JellycheckrStagedConfigUiStyles>
+    <JellycheckrStagedConfigUiHostPage>$(JellycheckrWebAssetsBuildDir)jellycheckr-config-ui-host.html</JellycheckrStagedConfigUiHostPage>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,16 +44,18 @@
     <JellycheckrConfigUiBundleInputs Include="$(ConfigUiDir)/src/**/*" />
     <JellycheckrConfigUiBundleInputs Include="$(ConfigUiDir)/package.json;$(ConfigUiDir)/package-lock.json;$(ConfigUiDir)/tsconfig.json" />
   </ItemGroup>
-    <ItemGroup>
-        <None Include="..\..\README.md" />
-        <None Include="..\logo.png" CopyToOutputDirectory="Always" />
-    </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" />
+    <None Include="..\logo.png" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Jellyfin.Controller" Version="10.9.11">
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinPackageVersion)">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Jellyfin.Model" Version="10.9.11">
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinPackageVersion)">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>
@@ -50,19 +66,7 @@
 
   <ItemGroup>
     <None Remove="Configuration\configPage.html" />
-    <None Remove="Configuration\configUiHost.html" />
     <EmbeddedResource Include="Configuration\configPage.html" />
-    <EmbeddedResource Include="Configuration\configUiHost.html" Link="Web\jellycheckr-config-ui-host.html" />
-    <EmbeddedResource Include="$(JellycheckrEmbeddedWebBundle)" Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
-      <Link>Web\jellycheckr-web.js</Link>
-      <LogicalName>$(RootNamespace).Web.jellycheckr-web.js</LogicalName>
-      <ManifestResourceName>$(RootNamespace).Web.jellycheckr-web.js</ManifestResourceName>
-    </EmbeddedResource>
-    <EmbeddedResource Include="$(JellycheckrEmbeddedConfigUiBundle)" Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
-      <Link>Web\jellycheckr-config-ui.js</Link>
-      <LogicalName>$(RootNamespace).Web.jellycheckr-config-ui.js</LogicalName>
-      <ManifestResourceName>$(RootNamespace).Web.jellycheckr-config-ui.js</ManifestResourceName>
-    </EmbeddedResource>
   </ItemGroup>
 
   <Target
@@ -73,14 +77,14 @@
     </Exec>
     <Error
       Condition="'$(JellycheckrNodeExitCode)' != '0'"
-      Text="Node.js is required to build embedded Jellycheckr frontend assets. Install Node.js and retry, or use /p:JellycheckrBuildEmbeddedAssets=false for backend-only builds." />
+      Text="Node.js is required to build Jellycheckr frontend assets. Install Node.js and retry, or use /p:JellycheckrBuildEmbeddedAssets=false for backend-only builds." />
 
     <Exec Command="npm --version" IgnoreExitCode="true" StandardOutputImportance="Low">
       <Output TaskParameter="ExitCode" PropertyName="JellycheckrNpmExitCode" />
     </Exec>
     <Error
       Condition="'$(JellycheckrNpmExitCode)' != '0'"
-      Text="npm is required to build embedded Jellycheckr frontend assets. Install npm and retry, or use /p:JellycheckrBuildEmbeddedAssets=false for backend-only builds." />
+      Text="npm is required to build Jellycheckr frontend assets. Install npm and retry, or use /p:JellycheckrBuildEmbeddedAssets=false for backend-only builds." />
   </Target>
 
   <Target
@@ -109,57 +113,146 @@
     Name="JellycheckrBuildWebClientBundle"
     DependsOnTargets="JellycheckrRestoreWebClientDependencies"
     Inputs="@(JellycheckrWebClientBundleInputs)"
-    Outputs="$(JellycheckrEmbeddedWebBundle)"
+    Outputs="$(JellycheckrStagedWebClientBundle)"
     Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
-    <Message Importance="High" Text="[Jellycheckr] Building embedded web-client bundle..." />
+    <Message Importance="High" Text="[Jellycheckr] Building web-client bundle..." />
     <Exec WorkingDirectory="$(WebClientDir)" Command="npm run build:bundle" />
     <Error Condition="!Exists('$(JellycheckrWebClientDistBundle)')" Text="Expected web-client bundle was not produced: $(JellycheckrWebClientDistBundle)" />
-    <MakeDir Directories="$(JellycheckrEmbeddedBuildDir)" />
-    <Copy SourceFiles="$(JellycheckrWebClientDistBundle)" DestinationFiles="$(JellycheckrEmbeddedWebBundle)" />
+    <MakeDir Directories="$(JellycheckrWebAssetsBuildDir)" />
+    <Copy SourceFiles="$(JellycheckrWebClientDistBundle)" DestinationFiles="$(JellycheckrStagedWebClientBundle)" />
   </Target>
 
   <Target
     Name="JellycheckrBuildConfigUiBundle"
     DependsOnTargets="JellycheckrRestoreConfigUiDependencies"
     Inputs="@(JellycheckrConfigUiBundleInputs)"
-    Outputs="$(JellycheckrEmbeddedConfigUiBundle)"
+    Outputs="$(JellycheckrStagedConfigUiBundle);$(JellycheckrStagedConfigUiStyles)"
     Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
-    <Message Importance="High" Text="[Jellycheckr] Building embedded config-ui bundle..." />
+    <Message Importance="High" Text="[Jellycheckr] Building config-ui bundle and styles..." />
     <Exec WorkingDirectory="$(ConfigUiDir)" Command="npm run build:bundle" />
     <Error Condition="!Exists('$(JellycheckrConfigUiDistBundle)')" Text="Expected config-ui bundle was not produced: $(JellycheckrConfigUiDistBundle)" />
-    <MakeDir Directories="$(JellycheckrEmbeddedBuildDir)" />
-    <Copy SourceFiles="$(JellycheckrConfigUiDistBundle)" DestinationFiles="$(JellycheckrEmbeddedConfigUiBundle)" />
+    <Error Condition="!Exists('$(JellycheckrConfigUiDistStyles)')" Text="Expected config-ui stylesheet was not produced: $(JellycheckrConfigUiDistStyles)" />
+    <MakeDir Directories="$(JellycheckrWebAssetsBuildDir)" />
+    <Copy
+      SourceFiles="$(JellycheckrConfigUiDistBundle);$(JellycheckrConfigUiDistStyles)"
+      DestinationFiles="$(JellycheckrStagedConfigUiBundle);$(JellycheckrStagedConfigUiStyles)" />
   </Target>
 
   <Target
-    Name="JellycheckrBuildEmbeddedAssets"
-    DependsOnTargets="JellycheckrBuildWebClientBundle;JellycheckrBuildConfigUiBundle"
+    Name="JellycheckrStageConfigUiHostPage"
+    Inputs="$(JellycheckrConfigUiHostSource)"
+    Outputs="$(JellycheckrStagedConfigUiHostPage)"
     Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
-    <Error Condition="!Exists('$(JellycheckrEmbeddedWebBundle)')" Text="Embedded web-client bundle is missing: $(JellycheckrEmbeddedWebBundle)" />
-    <Error Condition="!Exists('$(JellycheckrEmbeddedConfigUiBundle)')" Text="Embedded config-ui bundle is missing: $(JellycheckrEmbeddedConfigUiBundle)" />
+    <MakeDir Directories="$(JellycheckrWebAssetsBuildDir)" />
+    <Copy SourceFiles="$(JellycheckrConfigUiHostSource)" DestinationFiles="$(JellycheckrStagedConfigUiHostPage)" />
+  </Target>
+
+  <Target
+    Name="JellycheckrBuildWebAssets"
+    DependsOnTargets="JellycheckrBuildWebClientBundle;JellycheckrBuildConfigUiBundle;JellycheckrStageConfigUiHostPage"
+    Condition="'$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(JellycheckrStagedWebClientBundle)')" Text="Web-client bundle is missing: $(JellycheckrStagedWebClientBundle)" />
+    <Error Condition="!Exists('$(JellycheckrStagedConfigUiBundle)')" Text="Config-ui bundle is missing: $(JellycheckrStagedConfigUiBundle)" />
+    <Error Condition="!Exists('$(JellycheckrStagedConfigUiStyles)')" Text="Config-ui stylesheet is missing: $(JellycheckrStagedConfigUiStyles)" />
+    <Error Condition="!Exists('$(JellycheckrStagedConfigUiHostPage)')" Text="Config-ui host page is missing: $(JellycheckrStagedConfigUiHostPage)" />
   </Target>
 
   <Target
     Name="JellycheckrBuildEmbeddedAssetsBeforeInnerBuilds"
     BeforeTargets="DispatchToInnerBuilds"
-    DependsOnTargets="JellycheckrBuildEmbeddedAssets"
+    DependsOnTargets="JellycheckrBuildWebAssets"
     Condition="'$(IsCrossTargetingBuild)' == 'true' and '$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'" />
 
   <Target
-    Name="JellycheckrEnsureEmbeddedAssetsForCompile"
-    BeforeTargets="PrepareResourceNames;CoreCompile"
-    DependsOnTargets="JellycheckrBuildEmbeddedAssets"
+    Name="JellycheckrEnsureWebAssetsForCompile"
+    BeforeTargets="CoreCompile"
+    DependsOnTargets="JellycheckrBuildWebAssets"
     Condition="'$(TargetFramework)' != '' and '$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'" />
+
+  <Target
+    Name="JellycheckrCopyWebAssetsToBuildOutput"
+    AfterTargets="Build"
+    DependsOnTargets="JellycheckrBuildWebAssets"
+    Condition="'$(TargetFramework)' != '' and '$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <JellycheckrBuildWebAssetsDir>$([MSBuild]::EnsureTrailingSlash('$(TargetDir)web'))</JellycheckrBuildWebAssetsDir>
+    </PropertyGroup>
+
+    <MakeDir Directories="$(JellycheckrBuildWebAssetsDir)" />
+    <Copy
+      SourceFiles="$(JellycheckrStagedWebClientBundle);$(JellycheckrStagedConfigUiBundle);$(JellycheckrStagedConfigUiStyles);$(JellycheckrStagedConfigUiHostPage)"
+      DestinationFiles="$(JellycheckrBuildWebAssetsDir)jellycheckr-web.js;$(JellycheckrBuildWebAssetsDir)jellycheckr-config-ui.js;$(JellycheckrBuildWebAssetsDir)jellycheckr-config-ui.css;$(JellycheckrBuildWebAssetsDir)jellycheckr-config-ui-host.html" />
+  </Target>
+
+  <Target
+    Name="JellycheckrCopyWebAssetsToPublishOutput"
+    AfterTargets="Publish"
+    DependsOnTargets="JellycheckrBuildWebAssets"
+    Condition="'$(TargetFramework)' == 'net8.0' and '$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <JellycheckrPublishWebAssetsDir>$([MSBuild]::EnsureTrailingSlash('$(PublishDir)web'))</JellycheckrPublishWebAssetsDir>
+    </PropertyGroup>
+
+    <MakeDir Directories="$(JellycheckrPublishWebAssetsDir)" />
+    <Copy
+      SourceFiles="$(JellycheckrStagedWebClientBundle);$(JellycheckrStagedConfigUiBundle);$(JellycheckrStagedConfigUiStyles);$(JellycheckrStagedConfigUiHostPage)"
+      DestinationFiles="$(JellycheckrPublishWebAssetsDir)jellycheckr-web.js;$(JellycheckrPublishWebAssetsDir)jellycheckr-config-ui.js;$(JellycheckrPublishWebAssetsDir)jellycheckr-config-ui.css;$(JellycheckrPublishWebAssetsDir)jellycheckr-config-ui-host.html" />
+
+    <Message Importance="High" Text="[Jellycheckr] Copied plugin web assets to publish output: $(JellycheckrPublishWebAssetsDir)" />
+  </Target>
+
+  <Target
+    Name="JellycheckrValidatePluginRouteVersion"
+    BeforeTargets="PrepareForBuild;Publish"
+    Condition="'$(TargetFramework)' != ''">
+    <Error
+      Condition="'$(JellycheckrPluginRouteVersion)' == ''"
+      Text="Jellycheckr plugin version '$(Version)' must start with a 3-part or 4-part numeric version (for example 0.1.0 or 0.1.0.0) so a Jellyfin plugin route version can be generated." />
+  </Target>
+
+  <Target
+    Name="JellycheckrWritePluginMetaJson"
+    AfterTargets="Publish"
+    Condition="'$(TargetFramework)' == 'net8.0'">
+    <PropertyGroup>
+      <JellycheckrPluginMetaJsonPath>$(PublishDir)meta.json</JellycheckrPluginMetaJsonPath>
+      <JellycheckrPluginMetaTimestamp>$([System.DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))</JellycheckrPluginMetaTimestamp>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <JellycheckrPluginMetaJsonLines Include="{" />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;guid&quot;: &quot;$(JellycheckrPluginGuid)&quot;," />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;name&quot;: &quot;Jellycheckr AYSW&quot;," />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;description&quot;: &quot;Are You Still Watching prompts for Jellyfin playback.&quot;," />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;overview&quot;: &quot;Jellycheckr AYSW plugin with bundled web prompt UI and optional server fallback enforcement.&quot;," />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;owner&quot;: &quot;Jellycheckr&quot;," />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;category&quot;: &quot;General&quot;," />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;version&quot;: &quot;$(JellycheckrPluginRouteVersion)&quot;," />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;targetAbi&quot;: &quot;$(JellycheckrTargetAbi)&quot;," />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;timestamp&quot;: &quot;$(JellycheckrPluginMetaTimestamp)&quot;," />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;changelog&quot;: &quot;Packaged from local build.&quot;" />
+      <JellycheckrPluginMetaJsonLines Include="}" />
+    </ItemGroup>
+
+    <WriteLinesToFile
+      File="$(JellycheckrPluginMetaJsonPath)"
+      Lines="@(JellycheckrPluginMetaJsonLines)"
+      Overwrite="true" />
+
+    <Message Importance="High" Text="[Jellycheckr] Wrote plugin metadata: $(JellycheckrPluginMetaJsonPath) (version $(JellycheckrPluginRouteVersion))" />
+  </Target>
 
   <Target
     Name="JellycheckrPackagePluginZip"
     AfterTargets="Publish"
+    DependsOnTargets="JellycheckrWritePluginMetaJson;JellycheckrCopyWebAssetsToPublishOutput"
     Condition="'$(TargetFramework)' == 'net8.0' and '$(JellycheckrCreatePluginZip)' == 'true'">
     <PropertyGroup>
       <JellycheckrPluginZipPath>$(JellycheckrArtifactsDir)jellycheckr-server-plugin-$(Version).zip</JellycheckrPluginZipPath>
     </PropertyGroup>
 
     <MakeDir Directories="$(JellycheckrArtifactsDir)" />
+    <Error Condition="!Exists('$(PublishDir)meta.json')" Text="Expected Jellyfin plugin metadata file was not produced: $(PublishDir)meta.json" />
     <Delete Files="$(JellycheckrPluginZipPath)" Condition="Exists('$(JellycheckrPluginZipPath)')" />
     <ZipDirectory SourceDirectory="$(PublishDir)" DestinationFile="$(JellycheckrPluginZipPath)" />
     <Message Importance="High" Text="[Jellycheckr] Created plugin zip: $(JellycheckrPluginZipPath)" />

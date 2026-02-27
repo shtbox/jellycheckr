@@ -6,15 +6,14 @@
   "additionalProperties": false,
   "required": [
     "enabled",
+    "enableEpisodeCheck",
+    "enableTimerCheck",
+    "enableServerFallback",
     "episodeThreshold",
     "minutesThreshold",
     "interactionQuietSeconds",
     "promptTimeoutSeconds",
     "cooldownMinutes",
-    "enforcementMode",
-    "serverFallbackEpisodeThreshold",
-    "serverFallbackMinutesThreshold",
-    "serverFallbackTriggerMode",
     "serverFallbackInactivityMinutes",
     "serverFallbackPauseBeforeStop",
     "serverFallbackPauseGraceSeconds",
@@ -28,21 +27,14 @@
   ],
   "properties": {
     "enabled": { "type": "boolean" },
+    "enableEpisodeCheck": { "type": "boolean" },
+    "enableTimerCheck": { "type": "boolean" },
+    "enableServerFallback": { "type": "boolean" },
     "episodeThreshold": { "type": "integer", "minimum": 1 },
     "minutesThreshold": { "type": "integer", "minimum": 1 },
     "interactionQuietSeconds": { "type": "integer", "minimum": 5 },
     "promptTimeoutSeconds": { "type": "integer", "minimum": 10 },
     "cooldownMinutes": { "type": "integer", "minimum": 0 },
-    "enforcementMode": {
-      "type": "string",
-      "enum": ["None", "WebOnly", "ServerFallback"]
-    },
-    "serverFallbackEpisodeThreshold": { "type": "integer", "minimum": 0 },
-    "serverFallbackMinutesThreshold": { "type": "integer", "minimum": 0 },
-    "serverFallbackTriggerMode": {
-      "type": "string",
-      "enum": ["Any", "All"]
-    },
     "serverFallbackInactivityMinutes": { "type": "integer", "minimum": 1 },
     "serverFallbackPauseBeforeStop": { "type": "boolean" },
     "serverFallbackPauseGraceSeconds": { "type": "integer", "minimum": 5 },

@@ -15,18 +15,17 @@ public enum ServerFallbackTriggerMode
     All
 }
 
-public sealed class EffectiveConfigResponse
+public sealed record EffectiveConfigResponse
 {
     public bool Enabled { get; set; }
+    public bool EnableEpisodeCheck { get; set; }
+    public bool EnableTimerCheck { get; set; }
+    public bool EnableServerFallback { get; set; }
     public int EpisodeThreshold { get; set; }
     public int MinutesThreshold { get; set; }
     public int InteractionQuietSeconds { get; set; }
     public int PromptTimeoutSeconds { get; set; }
     public int CooldownMinutes { get; set; }
-    public EnforcementMode EnforcementMode { get; set; }
-    public int ServerFallbackEpisodeThreshold { get; set; }
-    public int ServerFallbackMinutesThreshold { get; set; }
-    public ServerFallbackTriggerMode ServerFallbackTriggerMode { get; set; }
     public int ServerFallbackInactivityMinutes { get; set; }
     public bool ServerFallbackPauseBeforeStop { get; set; }
     public int ServerFallbackPauseGraceSeconds { get; set; }
@@ -40,7 +39,7 @@ public sealed class EffectiveConfigResponse
     public int SchemaVersion { get; set; }
 }
 
-public sealed class AckRequest
+public sealed record AckRequest
 {
     public string AckType { get; set; } = "continue";
     public DateTimeOffset? ClientTimeUtc { get; set; }
@@ -50,13 +49,13 @@ public sealed class AckRequest
     public string? DeviceId { get; set; }
 }
 
-public sealed class AckResponse
+public sealed record AckResponse
 {
     public bool ResetApplied { get; set; }
     public DateTimeOffset NextEligiblePromptUtc { get; set; }
 }
 
-public sealed class InteractionRequest
+public sealed record InteractionRequest
 {
     public string EventType { get; set; } = string.Empty;
     public DateTimeOffset? ClientTimeUtc { get; set; }
@@ -65,13 +64,13 @@ public sealed class InteractionRequest
     public string? DeviceId { get; set; }
 }
 
-public sealed class InteractionResponse
+public sealed record InteractionResponse
 {
     public bool Accepted { get; set; }
     public DateTimeOffset ReceivedAtUtc { get; set; }
 }
 
-public sealed class PromptShownRequest
+public sealed record PromptShownRequest
 {
     public int TimeoutSeconds { get; set; }
     public string? ItemId { get; set; }

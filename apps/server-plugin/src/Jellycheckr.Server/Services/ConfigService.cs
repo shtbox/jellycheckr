@@ -15,6 +15,7 @@ public interface IConfigService
 
 public sealed class ConfigService : IConfigService
 {
+    private const int CurrentSchemaVersion = 3;
     private readonly ILogger<ConfigService> _logger;
 
     public ConfigService(ILogger<ConfigService> logger)
@@ -26,13 +27,11 @@ public sealed class ConfigService : IConfigService
     {
         var config = GetAdminConfig();
         var effective = ToEffectiveResponse(config);
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            config,
+        _logger.LogJellycheckrTrace(
             "Computed effective config for userId={UserId} adminConfig={@AdminConfig} effectiveConfig={@EffectiveConfig}",
-            userId ?? "(null)",
-            JellycheckrDiagnosticLogging.Describe(config),
-            JellycheckrDiagnosticLogging.Describe(effective));
+            userId,
+            config,
+            effective);
         return effective;
     }
 
@@ -40,45 +39,49 @@ public sealed class ConfigService : IConfigService
     {
         var config = Plugin.Instance?.Configuration;
         var resolved = config ?? new PluginConfig();
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            resolved,
-            "Resolved admin config from plugin instance present={HasPluginInstance} config={@Config}",
+        var migrated = MigrateLegacyConfigIfNeeded(resolved);
+        Validate(resolved);
+        JellycheckrLogLevelState.Apply(resolved);
+
+        if (migrated && Plugin.Instance is not null)
+        {
+            _logger.LogJellycheckrInformation(
+                "[Jellycheckr] Migrating admin configuration to schema v{SchemaVersion}.",
+                CurrentSchemaVersion);
+            SetPluginConfiguration(Plugin.Instance, resolved);
+            Plugin.Instance.SaveConfiguration();
+        }
+
+        _logger.LogJellycheckrTrace(
+            "Resolved admin config from plugin instance present={HasPluginInstance} migrated={Migrated} config={@Config}",
             Plugin.Instance is not null,
-            JellycheckrDiagnosticLogging.Describe(resolved));
+            migrated,
+            resolved);
         return resolved;
     }
 
     public PluginConfig UpdateAdminConfig(PluginConfig next)
     {
-        _logger.LogInformation("[Jellycheckr] Updating admin configuration.");
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            next,
-            "Validating incoming admin config payload={@Config}",
-            JellycheckrDiagnosticLogging.Describe(next));
+        _ = MigrateLegacyConfigIfNeeded(next);
         Validate(next);
+        JellycheckrLogLevelState.Apply(next);
+        _logger.LogJellycheckrInformation("[Jellycheckr] Updating admin configuration.");
+        _logger.LogJellycheckrTrace("Validated incoming admin config payload={@Config}", next);
         if (Plugin.Instance is null)
         {
-            _logger.LogWarning("[Jellycheckr] Plugin instance was null during config update; returning validated payload only.");
+            _logger.LogJellycheckrWarning("[Jellycheckr] Plugin instance was null during config update; returning validated payload only.");
             return next;
         }
 
         var previous = Plugin.Instance.Configuration;
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            next,
+        _logger.LogJellycheckrTrace(
             "Persisting admin config previous={@PreviousConfig} next={@NextConfig}",
-            previous is null ? null : JellycheckrDiagnosticLogging.Describe(previous),
-            JellycheckrDiagnosticLogging.Describe(next));
+            previous,
+            next);
         SetPluginConfiguration(Plugin.Instance, next);
         Plugin.Instance.SaveConfiguration();
         var saved = Plugin.Instance.Configuration;
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            saved,
-            "Saved admin config persisted={@Config}",
-            JellycheckrDiagnosticLogging.Describe(saved));
+        _logger.LogJellycheckrTrace("Saved admin config persisted={@Config}", saved);
         return saved;
     }
 
@@ -97,15 +100,14 @@ public sealed class ConfigService : IConfigService
         return new EffectiveConfigResponse
         {
             Enabled = config.Enabled,
+            EnableEpisodeCheck = config.EnableEpisodeCheck,
+            EnableTimerCheck = config.EnableTimerCheck,
+            EnableServerFallback = config.EnableServerFallback,
             EpisodeThreshold = config.EpisodeThreshold,
             MinutesThreshold = config.MinutesThreshold,
             InteractionQuietSeconds = config.InteractionQuietSeconds,
             PromptTimeoutSeconds = config.PromptTimeoutSeconds,
             CooldownMinutes = config.CooldownMinutes,
-            EnforcementMode = config.EnforcementMode,
-            ServerFallbackEpisodeThreshold = config.ServerFallbackEpisodeThreshold,
-            ServerFallbackMinutesThreshold = config.ServerFallbackMinutesThreshold,
-            ServerFallbackTriggerMode = config.ServerFallbackTriggerMode,
             ServerFallbackInactivityMinutes = config.ServerFallbackInactivityMinutes,
             ServerFallbackPauseBeforeStop = config.ServerFallbackPauseBeforeStop,
             ServerFallbackPauseGraceSeconds = config.ServerFallbackPauseGraceSeconds,
@@ -122,8 +124,67 @@ public sealed class ConfigService : IConfigService
         };
     }
 
+    private static bool MigrateLegacyConfigIfNeeded(PluginConfig config)
+    {
+        var migrated = false;
+
+        if (config.SchemaVersion < CurrentSchemaVersion)
+        {
+            if (config.EnforcementMode == EnforcementMode.None)
+            {
+                config.Enabled = false;
+            }
+
+            if (config.EnforcementMode == EnforcementMode.WebOnly)
+            {
+                config.EnableServerFallback = false;
+            }
+            else if (config.EnforcementMode == EnforcementMode.ServerFallback)
+            {
+                config.EnableServerFallback = true;
+
+                if (config.ServerFallbackEpisodeThreshold > 0)
+                {
+                    config.EnableEpisodeCheck = true;
+                    config.EpisodeThreshold = Math.Max(1, config.ServerFallbackEpisodeThreshold);
+                }
+                else
+                {
+                    config.EnableEpisodeCheck = false;
+                }
+
+                if (config.ServerFallbackMinutesThreshold > 0)
+                {
+                    config.EnableTimerCheck = true;
+                    config.MinutesThreshold = Math.Max(1, config.ServerFallbackMinutesThreshold);
+                }
+                else
+                {
+                    config.EnableTimerCheck = false;
+                }
+            }
+
+            // Ensure legacy persisted configs that lacked v3 booleans remain operable.
+            if (!config.EnableEpisodeCheck && !config.EnableTimerCheck)
+            {
+                config.EnableEpisodeCheck = true;
+                config.EnableTimerCheck = true;
+            }
+
+            config.SchemaVersion = CurrentSchemaVersion;
+            migrated = true;
+        }
+
+        return migrated;
+    }
+
     private static void Validate(PluginConfig config)
     {
+        if (!config.EnableEpisodeCheck && !config.EnableTimerCheck)
+        {
+            throw new ArgumentOutOfRangeException(nameof(config.EnableEpisodeCheck), "At least one threshold check must be enabled.");
+        }
+
         if (config.EpisodeThreshold < 1) throw new ArgumentOutOfRangeException(nameof(config.EpisodeThreshold));
         if (config.MinutesThreshold < 1) throw new ArgumentOutOfRangeException(nameof(config.MinutesThreshold));
         if (config.InteractionQuietSeconds < 5) throw new ArgumentOutOfRangeException(nameof(config.InteractionQuietSeconds));
@@ -134,12 +195,8 @@ public sealed class ConfigService : IConfigService
         if (config.ServerFallbackInactivityMinutes < 1) throw new ArgumentOutOfRangeException(nameof(config.ServerFallbackInactivityMinutes));
         if (config.ServerFallbackPauseGraceSeconds < 5) throw new ArgumentOutOfRangeException(nameof(config.ServerFallbackPauseGraceSeconds));
         if (config.DeveloperPromptAfterSeconds < 1) throw new ArgumentOutOfRangeException(nameof(config.DeveloperPromptAfterSeconds));
+        if (!Enum.IsDefined(config.MinimumLogLevel)) throw new ArgumentOutOfRangeException(nameof(config.MinimumLogLevel));
         if (config.SchemaVersion < 1) throw new ArgumentOutOfRangeException(nameof(config.SchemaVersion));
-        if (config.EnforcementMode == EnforcementMode.ServerFallback
-            && config.ServerFallbackEpisodeThreshold < 1
-            && config.ServerFallbackMinutesThreshold < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(config.ServerFallbackEpisodeThreshold), "At least one server fallback threshold must be enabled.");
-        }
     }
 }
+

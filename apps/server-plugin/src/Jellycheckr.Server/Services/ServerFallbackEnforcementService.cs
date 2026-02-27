@@ -19,6 +19,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
     private readonly IServerFallbackSessionSnapshotProvider _sessionSnapshotProvider;
     private readonly IServerFallbackDecisionEngine _decisionEngine;
     private readonly IJellyfinSessionCommandDispatcher _commandDispatcher;
+    private readonly IWebUiInjectionState _webUiInjectionState;
     private readonly IClock _clock;
     private readonly ILogger<ServerFallbackEnforcementService> _logger;
 
@@ -28,6 +29,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         IServerFallbackSessionSnapshotProvider sessionSnapshotProvider,
         IServerFallbackDecisionEngine decisionEngine,
         IJellyfinSessionCommandDispatcher commandDispatcher,
+        IWebUiInjectionState webUiInjectionState,
         IClock clock,
         ILogger<ServerFallbackEnforcementService> logger)
     {
@@ -36,6 +38,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         _sessionSnapshotProvider = sessionSnapshotProvider;
         _decisionEngine = decisionEngine;
         _commandDispatcher = commandDispatcher;
+        _webUiInjectionState = webUiInjectionState;
         _clock = clock;
         _logger = logger;
     }
@@ -53,7 +56,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[Jellycheckr] Unhandled error in server fallback enforcement loop.");
+                _logger.LogJellycheckrError(ex, "[Jellycheckr] Unhandled error in server fallback enforcement loop.");
             }
 
             await Task.Delay(LoopDelay, stoppingToken).ConfigureAwait(false);
@@ -64,36 +67,30 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
     {
         var now = _clock.UtcNow;
         var config = _configService.GetEffectiveConfig(null);
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            config,
+        _logger.LogJellycheckrTrace(
             "Server fallback loop tick nowUtc={NowUtc} config={@EffectiveConfig}",
             now,
-            JellycheckrDiagnosticLogging.Describe(config));
+            config);
 
-        if (config.EnforcementMode != EnforcementMode.ServerFallback || !config.Enabled)
+        if (!config.Enabled || !config.EnableServerFallback)
         {
-            JellycheckrDiagnosticLogging.Verbose(
-                _logger,
-                config,
-                "Skipping fallback enforcement because enabled={Enabled} mode={EnforcementMode}",
+            _logger.LogJellycheckrTrace(
+                "Skipping fallback enforcement because enabled={Enabled} fallbackEnabled={FallbackEnabled}",
                 config.Enabled,
-                config.EnforcementMode);
+                config.EnableServerFallback);
             _sessionStateStore.PruneOlderThan(now.Subtract(StaleStateTtl));
             return;
         }
 
-        ObserveCurrentSessions(now, config);
+        ObserveCurrentSessions(now);
         await EvaluateSessionsAsync(now, config, cancellationToken).ConfigureAwait(false);
         _sessionStateStore.PruneOlderThan(now.Subtract(StaleStateTtl));
     }
 
-    private void ObserveCurrentSessions(DateTimeOffset nowUtc, EffectiveConfigResponse config)
+    private void ObserveCurrentSessions(DateTimeOffset nowUtc)
     {
         var snapshots = _sessionSnapshotProvider.GetCurrentSessions();
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            config,
+        _logger.LogJellycheckrTrace(
             "Observing Jellyfin sessions count={Count}",
             snapshots.Count);
 
@@ -105,15 +102,14 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
             }
 
             var state = _sessionStateStore.GetOrCreate(snapshot.SessionId);
-            ObserveSession(state, snapshot, nowUtc, config);
+            ObserveSession(state, snapshot, nowUtc);
         }
     }
 
     private void ObserveSession(
         SessionState state,
         ServerObservedSessionSnapshot snapshot,
-        DateTimeOffset nowUtc,
-        EffectiveConfigResponse config)
+        DateTimeOffset nowUtc)
     {
         var previousItemId = state.CurrentItemId;
         var previousPositionTicks = state.LastObservedPositionTicks;
@@ -167,9 +163,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         {
             state.PreviousItemId = previousItemId;
             state.ServerFallbackEpisodeTransitionsSinceReset = Math.Max(0, state.ServerFallbackEpisodeTransitionsSinceReset) + 1;
-            JellycheckrDiagnosticLogging.Verbose(
-                _logger,
-                config,
+            _logger.LogJellycheckrTrace(
                 "Detected playback item transition session={SessionId} fromItem={FromItem} toItem={ToItem} transitionsSinceReset={Transitions}",
                 state.SessionId,
                 previousItemId,
@@ -224,9 +218,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
     private async Task EvaluateSessionsAsync(DateTimeOffset nowUtc, EffectiveConfigResponse config, CancellationToken cancellationToken)
     {
         var states = _sessionStateStore.Snapshot();
-        JellycheckrDiagnosticLogging.Verbose(
-            _logger,
-            config,
+        _logger.LogJellycheckrTrace(
             "Evaluating fallback enforcement snapshotCount={Count} nowUtc={NowUtc}",
             states.Count,
             nowUtc);
@@ -244,15 +236,15 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
                 continue;
             }
 
-            if (IsLikelyWebClient(state))
+            if (IsLikelyWebClient(state) && _webUiInjectionState.IsRegistered)
             {
+                var webSkipDecision = BuildSkipDecision(state, nowUtc, "web_client_excluded_injection_registered");
+                LogDecisionIfChanged(state, webSkipDecision, config, nowUtc);
                 continue;
             }
 
             var decision = _decisionEngine.Evaluate(state, config, nowUtc);
-            JellycheckrDiagnosticLogging.Verbose(
-                _logger,
-                config,
+            _logger.LogJellycheckrTrace(
                 "Fallback decision session={SessionId} trigger={Trigger} reason={Reason} minutes={Minutes:F2} transitions={Transitions} inactivityMinutes={Inactivity:F2}",
                 state.SessionId,
                 decision.ShouldTrigger,
@@ -260,6 +252,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
                 decision.PlaybackMinutesSinceReset,
                 decision.EpisodeTransitionsSinceReset,
                 decision.InactivityMinutes);
+            LogDecisionIfChanged(state, decision, config, nowUtc);
 
             if (!decision.ShouldTrigger)
             {
@@ -277,7 +270,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         ServerFallbackDecision decision,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation(
+        _logger.LogJellycheckrInformation(
             "[Jellycheckr] Server fallback trigger session={SessionId} client={Client} device={Device} item={ItemId} reason={Reason}.",
             state.SessionId,
             state.ClientName ?? "(unknown)",
@@ -289,6 +282,13 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         {
             state.LastFallbackAction = "dry_run";
             state.LastFallbackActionResult = decision.Reason;
+            _logger.LogJellycheckrInformation(
+                "[Jellycheckr] Fallback action decision session={SessionId} action=dry_run reason={Reason} playbackMinutes={PlaybackMinutes:F2} episodeTransitions={EpisodeTransitions} inactivityMinutes={InactivityMinutes:F2}.",
+                state.SessionId,
+                decision.Reason,
+                decision.PlaybackMinutesSinceReset,
+                decision.EpisodeTransitionsSinceReset,
+                decision.InactivityMinutes);
             ApplyFallbackResetAndCooldown(state, nowUtc, config.CooldownMinutes);
             return;
         }
@@ -302,6 +302,10 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
                 cancellationToken).ConfigureAwait(false);
             state.LastFallbackAction = "message";
             state.LastFallbackActionResult = messageSent ? "sent" : "failed";
+            _logger.LogJellycheckrInformation(
+                "[Jellycheckr] Fallback action decision session={SessionId} action=message result={Result}.",
+                state.SessionId,
+                state.LastFallbackActionResult);
         }
 
         if (!config.ServerFallbackPauseBeforeStop)
@@ -309,7 +313,12 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
             var stopSent = await _commandDispatcher.TrySendStopAsync(state.SessionId, state.UserId, cancellationToken).ConfigureAwait(false);
             state.LastFallbackAction = "stop";
             state.LastFallbackActionResult = stopSent ? "sent" : "failed";
-            ApplyFallbackResetAndCooldown(state, nowUtc, config.CooldownMinutes);
+            _logger.LogJellycheckrInformation(
+                "[Jellycheckr] Fallback action decision session={SessionId} action=stop result={Result} reason={Reason}.",
+                state.SessionId,
+                state.LastFallbackActionResult,
+                decision.Reason);
+            ApplyFallbackResetAndCooldown(state, nowUtc, config.CooldownMinutes, applyCooldown: !stopSent);
             return;
         }
 
@@ -320,7 +329,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         state.LastFallbackAction = "pause";
         state.LastFallbackActionResult = pauseSent ? "sent" : "failed";
 
-        _logger.LogInformation(
+        _logger.LogJellycheckrInformation(
             "[Jellycheckr] Server fallback pause initiated for session={SessionId}; graceUntilUtc={GraceUntilUtc} pauseSent={PauseSent}.",
             state.SessionId,
             state.PauseGraceDeadlineUtc,
@@ -344,7 +353,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
 
         if (string.IsNullOrWhiteSpace(state.CurrentItemId) && !sessionMissing)
         {
-            _logger.LogInformation(
+            _logger.LogJellycheckrInformation(
                 "[Jellycheckr] Clearing fallback pause grace for session={SessionId}; playback appears ended.",
                 state.SessionId);
             ApplyFallbackResetAndCooldown(state, nowUtc, config.CooldownMinutes);
@@ -353,7 +362,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
 
         if (IsGraceResolvedByUserActivity(state))
         {
-            _logger.LogInformation(
+            _logger.LogJellycheckrInformation(
                 "[Jellycheckr] Fallback pause grace resolved by activity for session={SessionId}; applying cooldown.",
                 state.SessionId);
             state.LastFallbackAction = "resume";
@@ -366,9 +375,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         {
             if (sessionMissing)
             {
-                JellycheckrDiagnosticLogging.Verbose(
-                    _logger,
-                    config,
+                _logger.LogJellycheckrTrace(
                     "Pause grace pending session={SessionId} waiting despite missing snapshot lastSeenUtc={LastSeenUtc} graceUntilUtc={GraceUntilUtc}",
                     state.SessionId,
                     state.LastSeenUtc,
@@ -379,7 +386,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
 
         if (sessionMissing)
         {
-            _logger.LogWarning(
+            _logger.LogJellycheckrWarning(
                 "[Jellycheckr] Pause grace expired for session={SessionId} but session snapshot is missing; attempting stop using cached session id.",
                 state.SessionId);
         }
@@ -388,6 +395,10 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         {
             state.LastFallbackAction = "dry_run_stop";
             state.LastFallbackActionResult = "deadline_elapsed";
+            _logger.LogJellycheckrInformation(
+                "[Jellycheckr] Fallback action decision session={SessionId} action=dry_run_stop reason={Reason}.",
+                state.SessionId,
+                state.LastFallbackActionResult);
             ApplyFallbackResetAndCooldown(state, nowUtc, config.CooldownMinutes);
             return;
         }
@@ -395,11 +406,76 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         var stopSent = await _commandDispatcher.TrySendStopAsync(state.SessionId, state.UserId, cancellationToken).ConfigureAwait(false);
         state.LastFallbackAction = "stop";
         state.LastFallbackActionResult = stopSent ? "sent_after_grace" : "failed_after_grace";
-        _logger.LogWarning(
+        _logger.LogJellycheckrInformation(
             "[Jellycheckr] Server fallback grace expired for session={SessionId}; stop command attempted result={Result}.",
             state.SessionId,
             state.LastFallbackActionResult);
-        ApplyFallbackResetAndCooldown(state, nowUtc, config.CooldownMinutes);
+        ApplyFallbackResetAndCooldown(state, nowUtc, config.CooldownMinutes, applyCooldown: !stopSent);
+    }
+
+    private void LogDecisionIfChanged(
+        SessionState state,
+        ServerFallbackDecision decision,
+        EffectiveConfigResponse config,
+        DateTimeOffset nowUtc)
+    {
+        var decisionKey = BuildDecisionKey(decision);
+        if (string.Equals(state.LastFallbackDecisionKey, decisionKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        state.LastFallbackDecisionKey = decisionKey;
+        state.LastFallbackDecisionLoggedUtc = nowUtc;
+
+        var episodeGate = config.EnableEpisodeCheck
+            ? $"{decision.EpisodeTransitionsSinceReset}/{config.EpisodeThreshold}"
+            : "off";
+        var minuteGate = config.EnableTimerCheck
+            ? $"{decision.PlaybackMinutesSinceReset:F2}/{config.MinutesThreshold:F2}"
+            : "off";
+        var inactivityGate = $"{decision.InactivityMinutes:F2}/{config.ServerFallbackInactivityMinutes:F2}";
+
+        _logger.LogJellycheckrInformation(
+            "[Jellycheckr] Fallback decision session={SessionId} trigger={Trigger} reason={Reason} episodeGate={EpisodeGate} minuteGate={MinuteGate} inactivityGate={InactivityGate} phase={Phase}.",
+            state.SessionId,
+            decision.ShouldTrigger,
+            decision.Reason,
+            episodeGate,
+            minuteGate,
+            inactivityGate,
+            state.FallbackPhase);
+    }
+
+    private static ServerFallbackDecision BuildSkipDecision(SessionState state, DateTimeOffset nowUtc, string reason)
+    {
+        var minutesPlayed = TimeSpan.FromTicks(Math.Max(0, state.ServerFallbackPlaybackTicksSinceReset)).TotalMinutes;
+        var transitions = Math.Max(0, state.ServerFallbackEpisodeTransitionsSinceReset);
+        var activityAnchor = state.LastInferredActivityUtc != DateTimeOffset.MinValue
+            ? state.LastInferredActivityUtc
+            : (state.LastSeenUtc != DateTimeOffset.MinValue ? state.LastSeenUtc : nowUtc);
+        var inactivityMinutes = Math.Max(0, (nowUtc - activityAnchor).TotalMinutes);
+
+        return ServerFallbackDecision.Skip(
+            reason,
+            minutesPlayed,
+            transitions,
+            inactivityMinutes);
+    }
+
+    private static string BuildDecisionKey(ServerFallbackDecision decision)
+    {
+        if (!decision.ShouldTrigger)
+        {
+            return $"skip:{decision.Reason}";
+        }
+
+        if (decision.Reason.StartsWith("developer_mode_after_", StringComparison.Ordinal))
+        {
+            return $"trigger:{decision.Reason}";
+        }
+
+        return "trigger:threshold_or_inactivity_met";
     }
 
     private static bool IsGraceResolvedByUserActivity(SessionState state)
@@ -422,14 +498,20 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         return state.IsPaused != true;
     }
 
-    private static void ApplyFallbackResetAndCooldown(SessionState state, DateTimeOffset nowUtc, int cooldownMinutes)
+    private static void ApplyFallbackResetAndCooldown(
+        SessionState state,
+        DateTimeOffset nowUtc,
+        int cooldownMinutes,
+        bool applyCooldown = true)
     {
         state.FallbackPhase = ServerFallbackPhase.Monitoring;
         state.PauseIssuedUtc = null;
         state.PauseGraceDeadlineUtc = null;
         state.ServerFallbackEpisodeTransitionsSinceReset = 0;
         state.ServerFallbackPlaybackTicksSinceReset = 0;
-        state.NextEligiblePromptUtc = nowUtc.AddMinutes(Math.Max(0, cooldownMinutes));
+        state.NextEligiblePromptUtc = applyCooldown
+            ? nowUtc.AddMinutes(Math.Max(0, cooldownMinutes))
+            : DateTimeOffset.MinValue;
         state.LastAckUtc = nowUtc;
         state.LastInferredActivityUtc = nowUtc;
     }
@@ -476,7 +558,12 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
 
         if (!snapshot.LastActivityUtc.HasValue || !snapshot.LastPlaybackCheckInUtc.HasValue)
         {
-            return true;
+            return false;
+        }
+
+        if (!HasAdvanced(state.LastObservedLastPlaybackCheckInUtc, snapshot.LastPlaybackCheckInUtc))
+        {
+            return false;
         }
 
         return (snapshot.LastActivityUtc.Value - snapshot.LastPlaybackCheckInUtc.Value).Duration() > TimeSpan.FromSeconds(2);
@@ -531,3 +618,4 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
                || device.Contains("browser", StringComparison.OrdinalIgnoreCase);
     }
 }
+

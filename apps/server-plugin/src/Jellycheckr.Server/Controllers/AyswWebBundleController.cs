@@ -19,41 +19,36 @@ public sealed class AyswWebBundleController : ControllerBase
     }
 
     [HttpGet("jellycheckr-web.js")]
-    public IActionResult GetWebBundle()
-    {
-        if (!EmbeddedWebClientBundle.TryGetBundle(out var script))
-        {
-            _logger.LogWarning("[Jellycheckr] Embedded web bundle not found.");
-            return NotFound();
-        }
-
-        Response.Headers.CacheControl = "public,max-age=3600";
-        return Content(script, "application/javascript; charset=utf-8");
-    }
+    public IActionResult GetWebBundle() => ServeAsset(PluginWebAssetRegistry.WebClientBundleKey, "web bundle");
 
     [HttpGet("jellycheckr-config-ui.js")]
-    public IActionResult GetConfigUiBundle()
-    {
-        if (!EmbeddedConfigUiBundle.TryGetBundle(out var script))
-        {
-            _logger.LogWarning("[Jellycheckr] Embedded config UI bundle not found.");
-            return NotFound();
-        }
+    public IActionResult GetConfigUiBundle() => ServeAsset(PluginWebAssetRegistry.ConfigUiBundleKey, "config UI bundle");
 
-        Response.Headers.CacheControl = "public,max-age=300";
-        return Content(script, "application/javascript; charset=utf-8");
-    }
+    [HttpGet("jellycheckr-config-ui.css")]
+    public IActionResult GetConfigUiStyles() => ServeAsset(PluginWebAssetRegistry.ConfigUiStylesKey, "config UI stylesheet");
 
     [HttpGet("jellycheckr-config-ui-host.html")]
-    public IActionResult GetConfigUiHostPage()
+    public IActionResult GetConfigUiHostPage() => ServeAsset(PluginWebAssetRegistry.ConfigUiHostPageKey, "config UI host page");
+
+    private IActionResult ServeAsset(string assetKey, string assetLabel)
     {
-        if (!EmbeddedConfigUiHostPage.TryGetHtml(out var html))
+        if (!PluginWebAssetRegistry.TryResolve(assetKey, out var asset, out var absolutePath))
         {
-            _logger.LogWarning("[Jellycheckr] Embedded config UI host page not found.");
+            _logger.LogJellycheckrWarning("[Jellycheckr] Web asset key was not registered: {AssetKey}", assetKey);
             return NotFound();
         }
 
-        Response.Headers.CacheControl = "public,max-age=300";
-        return Content(html, "text/html; charset=utf-8");
+        if (!System.IO.File.Exists(absolutePath))
+        {
+            _logger.LogJellycheckrWarning(
+                "[Jellycheckr] Plugin web asset not found: {AssetLabel} at {AssetPath}",
+                assetLabel,
+                absolutePath);
+            return NotFound();
+        }
+
+        Response.Headers.CacheControl = asset.CacheControl;
+        return PhysicalFile(absolutePath, asset.ContentType);
     }
 }
+
