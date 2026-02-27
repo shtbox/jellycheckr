@@ -62,3 +62,7 @@ Validated compatibility is documented in `docs/dev-notes.md`.
 ### HUD Debug Display
 <img width="1971" height="1109" alt="image" src="https://github.com/user-attachments/assets/e3514841-02eb-4cd4-8269-0debb6aa603c" />
 
+### Configuration 
+<img width="1289" height="1300" alt="image" src="https://github.com/user-attachments/assets/bcbce084-8062-4727-9848-9d9147dd9540" />
+
+
