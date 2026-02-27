@@ -1,15 +1,20 @@
 <img width="200" height="200" alt="logo" src="https://github.com/user-attachments/assets/491af40a-605a-4094-bf42-f1d4f966ec92" />
 
 # Jellycheckr
-
 `jellycheckr` is a monorepo for an "Are You Still Watching?" feature focused on:
 - Jellyfin server plugin (`apps/server-plugin`)
 - Jellyfin Web client module (`apps/web-client`)
 - Plugin configuration UI (`apps/config-ui`)
 
+## Installation
+1. Add `https://shtbox.io/jellycheckr/manifest.json` as a plugin source repository on your Jellyfin server.
+2. Find "Jellycheckr AYSW" in the list and install it. Configuration options available in plugin settings.
+
+
 > [!NOTE]
-> This plugin relies on the Jellyfin File Transformation plugin:
+> This plugin relies on the Jellyfin File Transformation plugin for web clients if you wish to use the "pretty" popup:
 > https://github.com/IAmParadox27/jellyfin-plugin-file-transformation/tree/main
+> When this plugin is missing it will fallback to Server Side Only mode which will pause play and use the SendMessage command to the client inform the user, and stopping after the configured fallback wait time. 
 
 ## Web Client Example
 <img width="auto" height="auto" alt="image" src="https://github.com/user-attachments/assets/5606b76f-225b-4fca-97e0-b1458db4b64d" />
