@@ -1,0 +1,360 @@
+name: Prerelease Build
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - labeled
+      - unlabeled
+  push:
+    branches-ignore:
+      - main
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or SHA to build from.
+        required: true
+        type: string
+      channel:
+        description: Prerelease channel to publish.
+        required: true
+        type: choice
+        options:
+          - beta
+          - rc
+      bump_override:
+        description: Override the detected release type when needed.
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - major
+          - minor
+          - patch
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prerelease-${{ github.event.pull_request.number || github.ref_name || github.event.inputs.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.prepare.outputs.should_build }}
+      publish_enabled: ${{ steps.prepare.outputs.publish_enabled }}
+      release_version: ${{ steps.prepare.outputs.release_version }}
+      manifest_version: ${{ steps.prepare.outputs.manifest_version }}
+      assembly_version: ${{ steps.prepare.outputs.assembly_version }}
+      tag_name: ${{ steps.prepare.outputs.tag_name }}
+      release_title: ${{ steps.prepare.outputs.release_title }}
+      last_stable_tag: ${{ steps.prepare.outputs.last_stable_tag }}
+      target_sha: ${{ steps.prepare.outputs.target_sha }}
+      target_abi: ${{ steps.prepare.outputs.target_abi }}
+      artifact_file_name: ${{ steps.prepare.outputs.artifact_file_name }}
+      bundle_artifact_name: ${{ steps.prepare.outputs.bundle_artifact_name }}
+    steps:
+      - name: Checkout repository with tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - name: Resolve prerelease context
+        id: prepare
+        shell: pwsh
+        env:
+          MANUAL_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || '' }}
+          MANUAL_BUMP_OVERRIDE: ${{ github.event_name == 'workflow_dispatch' && inputs.bump_override || 'auto' }}
+          IS_TRUSTED_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository || false }}
+        run: |
+          $mode = switch ($env:GITHUB_EVENT_NAME) {
+            'workflow_dispatch' { 'manual' }
+            'pull_request' { 'pr' }
+            default { 'push' }
+          }
+
+          $channel = switch ($env:GITHUB_EVENT_NAME) {
+            'workflow_dispatch' { $env:MANUAL_CHANNEL }
+            'push' { 'beta' }
+            default { '' }
+          }
+
+          $bumpOverride = switch ($env:GITHUB_EVENT_NAME) {
+            'workflow_dispatch' { if ($env:MANUAL_BUMP_OVERRIDE) { $env:MANUAL_BUMP_OVERRIDE } else { 'auto' } }
+            default { 'auto' }
+          }
+
+          $shaOverride = switch ($env:GITHUB_EVENT_NAME) {
+            'workflow_dispatch' { '' }
+            'pull_request' { '${{ github.event.pull_request.head.sha }}' }
+            default { '${{ github.sha }}' }
+          }
+
+          $contextJson = & ./.github/scripts/Get-ReleaseContext.ps1 `
+            -Mode $mode `
+            -Repository '${{ github.repository }}' `
+            -EventPath $env:GITHUB_EVENT_PATH `
+            -Sha $shaOverride `
+            -GitHubToken '${{ secrets.GITHUB_TOKEN }}' `
+            -PrereleaseChannel $channel `
+            -BumpOverride $bumpOverride
+          $context = $contextJson | ConvertFrom-Json -Depth 20
+
+          $publishEnabled = $false
+          $shouldBuild = $false
+
+          switch ($env:GITHUB_EVENT_NAME) {
+            'pull_request' {
+              $shouldBuild = [bool]$context.canPublishPrerelease
+              $publishEnabled = $shouldBuild -and ($env:IS_TRUSTED_PR -eq 'true')
+            }
+            'workflow_dispatch' {
+              $shouldBuild = [bool]$context.canPublishPrerelease
+              $publishEnabled = $shouldBuild
+            }
+            default {
+              $shouldBuild = [bool]$context.canPublishPrerelease
+              $publishEnabled = $false
+            }
+          }
+
+          $releaseVersion = if ($context.prereleaseVersion) { [string]$context.prereleaseVersion } else { '' }
+          $manifestVersion = if ($context.prereleaseManifestVersion) { [string]$context.prereleaseManifestVersion } else { '' }
+          $assemblyVersion = if ($context.prereleaseAssemblyVersion) { [string]$context.prereleaseAssemblyVersion } else { '' }
+          $tagName = if ($context.prereleaseTag) { [string]$context.prereleaseTag } else { '' }
+          $releaseTitle = if ($context.prereleaseReleaseTitle) { [string]$context.prereleaseReleaseTitle } else { '' }
+          $artifactFileName = if ($releaseVersion) { "Jellycheckr_{0}.zip" -f $releaseVersion } else { '' }
+          $bundleArtifactName = if ($releaseVersion) { "prerelease-bundle-{0}" -f $tagName } else { '' }
+
+          if (-not $shouldBuild) {
+            if ($env:GITHUB_EVENT_NAME -eq 'push') {
+              Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "## Prerelease Preview`n`nNo prerelease build was produced because the current commit does not resolve to a release bump."
+            }
+            else {
+              Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "## Prerelease Build`n`nNo prerelease build was produced. Add ``release:beta`` or ``release:rc``, or use manual dispatch with an explicit channel."
+            }
+          }
+          elseif ($env:GITHUB_EVENT_NAME -eq 'push') {
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "## Prerelease Preview`n`nA preview prerelease build will run using ``beta`` numbering, but publish steps stay disabled for non-main branch pushes."
+          }
+          elseif (-not $publishEnabled) {
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "## Prerelease Build`n`nThis build will package and validate the prerelease, but it will not publish because the workflow is running from an untrusted fork context."
+          }
+
+          "should_build=$($shouldBuild.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "publish_enabled=$($publishEnabled.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "release_version=$releaseVersion" >> $env:GITHUB_OUTPUT
+          "manifest_version=$manifestVersion" >> $env:GITHUB_OUTPUT
+          "assembly_version=$assemblyVersion" >> $env:GITHUB_OUTPUT
+          "tag_name=$tagName" >> $env:GITHUB_OUTPUT
+          "release_title=$releaseTitle" >> $env:GITHUB_OUTPUT
+
+          "last_stable_tag=$([string]$context.lastStableTag)" >> $env:GITHUB_OUTPUT
+          "target_sha=$([string]$context.targetSha)" >> $env:GITHUB_OUTPUT
+          "target_abi=$([string]$context.computedTargetAbi)" >> $env:GITHUB_OUTPUT
+          "artifact_file_name=$artifactFileName" >> $env:GITHUB_OUTPUT
+          "bundle_artifact_name=$bundleArtifactName" >> $env:GITHUB_OUTPUT
+
+  build:
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: needs.prepare.outputs.should_build == 'true'
+    outputs:
+      bundle_artifact_name: ${{ steps.bundle.outputs.bundle_artifact_name }}
+    steps:
+      - name: Checkout repository with tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - name: Setup .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: |
+            apps/config-ui/package-lock.json
+            apps/web-client/package-lock.json
+
+      - name: Restore test dependencies
+        shell: pwsh
+        run: dotnet restore apps/server-plugin/tests/Jellycheckr.Server.Tests/Jellycheckr.Server.Tests.csproj
+
+      - name: Build server project
+        shell: pwsh
+        run: >
+          dotnet build
+          apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.csproj
+          -c Release
+          --no-restore
+          /p:JellycheckrBuildEmbeddedAssets=false
+
+      - name: Run server tests
+        shell: pwsh
+        run: >
+          dotnet test
+          apps/server-plugin/tests/Jellycheckr.Server.Tests/Jellycheckr.Server.Tests.csproj
+          -c Release
+          --no-restore
+          /p:JellycheckrBuildEmbeddedAssets=false
+
+      - name: Publish and validate prerelease package
+        id: bundle
+        shell: pwsh
+        run: |
+          $publishDirectory = Join-Path $env:RUNNER_TEMP 'prerelease-publish'
+          $artifactsDirectory = Join-Path $env:RUNNER_TEMP 'prerelease-artifacts'
+          $bundleDirectory = Join-Path $env:RUNNER_TEMP 'prerelease-bundle'
+
+          if (Test-Path -LiteralPath $publishDirectory) {
+            Remove-Item -LiteralPath $publishDirectory -Recurse -Force
+          }
+
+          if (Test-Path -LiteralPath $artifactsDirectory) {
+            Remove-Item -LiteralPath $artifactsDirectory -Recurse -Force
+          }
+
+          if (Test-Path -LiteralPath $bundleDirectory) {
+            Remove-Item -LiteralPath $bundleDirectory -Recurse -Force
+          }
+
+          dotnet publish `
+            apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.csproj `
+            -c Release `
+            -f net8.0 `
+            -o $publishDirectory `
+            /p:Version=${{ needs.prepare.outputs.release_version }} `
+            /p:JellycheckrManifestVersion=${{ needs.prepare.outputs.manifest_version }} `
+            /p:JellycheckrAssemblyVersionNumber=${{ needs.prepare.outputs.assembly_version }} `
+            /p:JellycheckrPackageArtifactNameStem=Jellycheckr `
+            /p:JellycheckrArtifactsDir=$artifactsDirectory
+
+          $zipPath = Join-Path $artifactsDirectory '${{ needs.prepare.outputs.artifact_file_name }}'
+
+          $null = & ./.github/scripts/Validate-PluginPackage.ps1 `
+            -ZipPath $zipPath `
+            -PublishDirectory $publishDirectory `
+            -ExpectedPackageVersion '${{ needs.prepare.outputs.release_version }}' `
+            -ExpectedManifestVersion '${{ needs.prepare.outputs.manifest_version }}' `
+            -ExpectedAssemblyVersion '${{ needs.prepare.outputs.assembly_version }}' `
+            -ExpectedTargetAbi '${{ needs.prepare.outputs.target_abi }}' `
+            -ExpectedZipFileName '${{ needs.prepare.outputs.artifact_file_name }}'
+
+          [System.IO.Directory]::CreateDirectory($bundleDirectory) | Out-Null
+
+          $releaseNotesPath = Join-Path $bundleDirectory 'release-notes.md'
+          if ('${{ needs.prepare.outputs.last_stable_tag }}') {
+            $null = & ./.github/scripts/Get-Changelog.ps1 -FromTag '${{ needs.prepare.outputs.last_stable_tag }}' -OutputPath $releaseNotesPath
+          }
+          else {
+            $null = & ./.github/scripts/Get-Changelog.ps1 -OutputPath $releaseNotesPath
+          }
+
+          Copy-Item -LiteralPath $zipPath -Destination (Join-Path $bundleDirectory '${{ needs.prepare.outputs.artifact_file_name }}')
+
+          $releaseContext = [ordered]@{
+            releaseVersion = '${{ needs.prepare.outputs.release_version }}'
+            manifestVersion = '${{ needs.prepare.outputs.manifest_version }}'
+            assemblyVersion = '${{ needs.prepare.outputs.assembly_version }}'
+            targetSha = '${{ needs.prepare.outputs.target_sha }}'
+            targetAbi = '${{ needs.prepare.outputs.target_abi }}'
+            tagName = '${{ needs.prepare.outputs.tag_name }}'
+            releaseTitle = '${{ needs.prepare.outputs.release_title }}'
+          } | ConvertTo-Json -Depth 5
+
+          Set-Content -LiteralPath (Join-Path $bundleDirectory 'release-context.json') -Value $releaseContext -NoNewline
+
+          $releaseBodyPreview = @(
+            '```jellycheckr-manifest'
+            '{'
+            ('  "version": "' + '${{ needs.prepare.outputs.manifest_version }}' + '",')
+            ('  "targetAbi": "' + '${{ needs.prepare.outputs.target_abi }}' + '",')
+            '  "dependencies": []'
+            '}'
+            '```'
+          ) -join "`n"
+
+          $summary = @(
+            '## Prerelease Package Ready'
+            ''
+            "- Version: ${{ needs.prepare.outputs.release_version }}"
+            "- Manifest version: ${{ needs.prepare.outputs.manifest_version }}"
+            "- Target ABI: ${{ needs.prepare.outputs.target_abi }}"
+            ''
+            '### Release Body Preview'
+            ''
+            $releaseBodyPreview
+          ) -join "`n"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary
+
+          "bundle_artifact_name=${{ needs.prepare.outputs.bundle_artifact_name }}" >> $env:GITHUB_OUTPUT
+
+      - name: Upload prerelease bundle artifact
+        if: needs.prepare.outputs.publish_enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.bundle_artifact_name }}
+          path: ${{ runner.temp }}/prerelease-bundle
+          if-no-files-found: error
+
+  publish:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - build
+    if: needs.prepare.outputs.publish_enabled == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download prerelease bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.bundle_artifact_name }}
+          path: ${{ runner.temp }}/prerelease-bundle
+
+      - name: Publish GitHub prerelease
+        shell: pwsh
+        run: |
+          $bundleDirectory = Join-Path $env:RUNNER_TEMP 'prerelease-bundle'
+          $zipPath = Join-Path $bundleDirectory '${{ needs.prepare.outputs.artifact_file_name }}'
+          $releaseNotesPath = Join-Path $bundleDirectory 'release-notes.md'
+
+          $resultJson = & ./.github/scripts/Publish-GitHubRelease.ps1 `
+            -Repository '${{ github.repository }}' `
+            -GitHubToken '${{ secrets.GITHUB_TOKEN }}' `
+            -TagName '${{ needs.prepare.outputs.tag_name }}' `
+            -TargetSha '${{ needs.prepare.outputs.target_sha }}' `
+            -ReleaseTitle '${{ needs.prepare.outputs.release_title }}' `
+            -ManifestVersion '${{ needs.prepare.outputs.manifest_version }}' `
+            -TargetAbi '${{ needs.prepare.outputs.target_abi }}' `
+            -ZipAssetPath $zipPath `
+            -ChangelogAssetPath $releaseNotesPath `
+            -Prerelease
+
+          $result = $resultJson | ConvertFrom-Json -Depth 10
+          $summary = @(
+            '## GitHub Prerelease Published'
+            ''
+            "- Tag: $($result.tag)"
+            "- URL: $($result.releaseUrl)"
+          ) -join "`n"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary

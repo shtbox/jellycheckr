@@ -1,0 +1,92 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - edited
+      - synchronize
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: |
+            apps/config-ui/package-lock.json
+            apps/web-client/package-lock.json
+
+      - name: Validate PR title
+        shell: pwsh
+        run: |
+          $title = "${{ github.event.pull_request.title }}"
+          $pattern = '^(feat|fix|perf|refactor|docs|chore|test|build|ci)(\([^)]+\))?(!)?: .+'
+
+          if ($title -notmatch $pattern) {
+            Write-Error @"
+            PR titles must follow Conventional Commits.
+
+            Valid examples:
+            - feat(ui): add setting
+            - fix(api): avoid null response
+            - feat!: remove legacy config
+            - docs(readme): update install notes
+            "@
+          }
+
+      - name: Restore test dependencies
+        shell: pwsh
+        run: dotnet restore apps/server-plugin/tests/Jellycheckr.Server.Tests/Jellycheckr.Server.Tests.csproj
+
+      - name: Build server project
+        shell: pwsh
+        run: >
+          dotnet build
+          apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.csproj
+          -c Release
+          /p:JellycheckrBuildEmbeddedAssets=false
+
+      - name: Run server tests
+        shell: pwsh
+        run: >
+          dotnet test
+          apps/server-plugin/tests/Jellycheckr.Server.Tests/Jellycheckr.Server.Tests.csproj
+          -c Release
+          --no-restore
+          /p:JellycheckrBuildEmbeddedAssets=false
+
+      - name: Run publish dry-run
+        shell: pwsh
+        run: >
+          dotnet publish
+          apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.csproj
+          -c Release
+          -f net8.0
+          -o "${{ runner.temp }}/pr-validation-publish"
+          /p:JellycheckrCreatePluginZip=false
+          /p:Version=0.0.0-ci
+          /p:JellycheckrManifestVersion=0.0.0
+          /p:JellycheckrAssemblyVersionNumber=0.0.0.0

@@ -1,0 +1,113 @@
+name: Enterprise Release - Stage B
+
+on:
+  workflow_call:
+    inputs:
+      release_version:
+        required: true
+        type: string
+      release_tag:
+        required: true
+        type: string
+      release_sha:
+        required: true
+        type: string
+      release_bundle_artifact:
+        required: true
+        type: string
+      release_name:
+        required: true
+        type: string
+      artifact_file_name:
+        required: true
+        type: string
+      manifest_version:
+        required: true
+        type: string
+      target_abi:
+        required: true
+        type: string
+    secrets:
+      github_token:
+        required: true
+
+jobs:
+  release_and_publish:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-main-publish
+      cancel-in-progress: false
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download verified release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.release_bundle_artifact }}
+          path: ${{ runner.temp }}/release-bundle
+
+      - name: Verify bundle contents
+        shell: pwsh
+        run: |
+          $bundleDirectory = Join-Path $env:RUNNER_TEMP 'release-bundle'
+          $zipPath = Join-Path $bundleDirectory '${{ inputs.artifact_file_name }}'
+          $releaseNotesPath = Join-Path $bundleDirectory 'release-notes.md'
+          $releaseContextPath = Join-Path $bundleDirectory 'release-context.json'
+
+          foreach ($requiredPath in @($zipPath, $releaseNotesPath, $releaseContextPath)) {
+            if (-not (Test-Path -LiteralPath $requiredPath)) {
+              throw "Required Stage A artifact is missing: $requiredPath"
+            }
+          }
+
+          $releaseContext = Get-Content -LiteralPath $releaseContextPath -Raw | ConvertFrom-Json -Depth 20
+          if ($releaseContext.releaseVersion -ne '${{ inputs.release_version }}') {
+            throw "release-context.json releaseVersion mismatch."
+          }
+
+          if ($releaseContext.manifestVersion -ne '${{ inputs.manifest_version }}') {
+            throw "release-context.json manifestVersion mismatch."
+          }
+
+          if ($releaseContext.targetSha -ne '${{ inputs.release_sha }}') {
+            throw "release-context.json targetSha mismatch."
+          }
+
+          if ($releaseContext.targetAbi -ne '${{ inputs.target_abi }}') {
+            throw "release-context.json targetAbi mismatch."
+          }
+
+          if ((Get-Item -LiteralPath $zipPath).Name -ne '${{ inputs.artifact_file_name }}') {
+            throw "Release bundle zip file name mismatch."
+          }
+
+      - name: Publish stable GitHub release
+        shell: pwsh
+        run: |
+          $bundleDirectory = Join-Path $env:RUNNER_TEMP 'release-bundle'
+          $zipPath = Join-Path $bundleDirectory '${{ inputs.artifact_file_name }}'
+          $releaseNotesPath = Join-Path $bundleDirectory 'release-notes.md'
+
+          $resultJson = & ./.github/scripts/Publish-GitHubRelease.ps1 `
+            -Repository '${{ github.repository }}' `
+            -GitHubToken '${{ secrets.github_token }}' `
+            -TagName '${{ inputs.release_tag }}' `
+            -TargetSha '${{ inputs.release_sha }}' `
+            -ReleaseTitle '${{ inputs.release_name }}' `
+            -ManifestVersion '${{ inputs.manifest_version }}' `
+            -TargetAbi '${{ inputs.target_abi }}' `
+            -ZipAssetPath $zipPath `
+            -ChangelogAssetPath $releaseNotesPath
+
+          $result = $resultJson | ConvertFrom-Json -Depth 10
+          $summary = @(
+            '## Stable Release Published'
+            ''
+            "- Tag: $($result.tag)"
+            "- URL: $($result.releaseUrl)"
+          ) -join "`n"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary

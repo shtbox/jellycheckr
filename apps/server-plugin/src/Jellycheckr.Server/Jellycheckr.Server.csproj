@@ -9,12 +9,22 @@
     <JellyfinPackageVersion Condition="'$(JellyfinPackageVersion)' == ''">10.9.11</JellyfinPackageVersion>
     <JellycheckrPluginGuid>a53af988-9d8f-4a7c-8d5f-f902fd90e4bd</JellycheckrPluginGuid>
     <JellycheckrVersionCore4>$([System.Text.RegularExpressions.Regex]::Match('$(Version)', '^\d+\.\d+\.\d+\.\d+').Value)</JellycheckrVersionCore4>
-    <JellycheckrVersionCore3 Condition="'$(JellycheckrVersionCore4)' == ''">$([System.Text.RegularExpressions.Regex]::Match('$(Version)', '^\d+\.\d+\.\d+').Value)</JellycheckrVersionCore3>
-    <JellycheckrPluginRouteVersion Condition="'$(JellycheckrVersionCore4)' != ''">$(JellycheckrVersionCore4)</JellycheckrPluginRouteVersion>
-    <JellycheckrPluginRouteVersion Condition="'$(JellycheckrPluginRouteVersion)' == '' and '$(JellycheckrVersionCore3)' != ''">$(JellycheckrVersionCore3).0</JellycheckrPluginRouteVersion>
+    <JellycheckrVersionCore3>$([System.Text.RegularExpressions.Regex]::Match('$(Version)', '^\d+\.\d+\.\d+').Value)</JellycheckrVersionCore3>
+    <JellycheckrDefaultManifestVersion Condition="'$(JellycheckrVersionCore4)' != ''">$(JellycheckrVersionCore4)</JellycheckrDefaultManifestVersion>
+    <JellycheckrDefaultManifestVersion Condition="'$(JellycheckrDefaultManifestVersion)' == '' and '$(JellycheckrVersionCore3)' != ''">$(JellycheckrVersionCore3)</JellycheckrDefaultManifestVersion>
+    <JellycheckrManifestVersion Condition="'$(JellycheckrManifestVersion)' == ''">$(JellycheckrDefaultManifestVersion)</JellycheckrManifestVersion>
+    <JellycheckrDefaultAssemblyVersionNumber Condition="'$(JellycheckrVersionCore4)' != ''">$(JellycheckrVersionCore4)</JellycheckrDefaultAssemblyVersionNumber>
+    <JellycheckrDefaultAssemblyVersionNumber Condition="'$(JellycheckrDefaultAssemblyVersionNumber)' == '' and '$(JellycheckrVersionCore3)' != ''">$(JellycheckrVersionCore3).0</JellycheckrDefaultAssemblyVersionNumber>
+    <JellycheckrAssemblyVersionNumber Condition="'$(JellycheckrAssemblyVersionNumber)' == ''">$(JellycheckrDefaultAssemblyVersionNumber)</JellycheckrAssemblyVersionNumber>
     <JellycheckrTargetAbi Condition="'$(JellycheckrTargetAbi)' == ''">$(JellyfinPackageVersion).0</JellycheckrTargetAbi>
-    <AssemblyVersion>$(JellycheckrPluginRouteVersion)</AssemblyVersion>
-    <FileVersion>$(JellycheckrPluginRouteVersion)</FileVersion>
+    <AssemblyVersion>$(JellycheckrAssemblyVersionNumber)</AssemblyVersion>
+    <FileVersion>$(JellycheckrAssemblyVersionNumber)</FileVersion>
+    <InformationalVersion>$(Version)</InformationalVersion>
+    <JellycheckrPackageArtifactNameStem Condition="'$(JellycheckrPackageArtifactNameStem)' == ''">Jellycheckr</JellycheckrPackageArtifactNameStem>
+    <JellycheckrReleaseNotes Condition="'$(JellycheckrReleaseNotes)' == ''">Packaged from local build.</JellycheckrReleaseNotes>
+    <JellycheckrReleaseNotesEscapedBackslashes>$([System.Text.RegularExpressions.Regex]::Replace('$(JellycheckrReleaseNotes)', '\\', '\\\\'))</JellycheckrReleaseNotesEscapedBackslashes>
+    <JellycheckrReleaseNotesEscapedQuotes>$([System.Text.RegularExpressions.Regex]::Replace('$(JellycheckrReleaseNotesEscapedBackslashes)', '&quot;', '\&quot;'))</JellycheckrReleaseNotesEscapedQuotes>
+    <JellycheckrReleaseNotesJson>$([System.Text.RegularExpressions.Regex]::Replace('$(JellycheckrReleaseNotesEscapedQuotes)', '(\r\n|\r|\n)', '\\n'))</JellycheckrReleaseNotesJson>
 
     <RepoRoot>$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../..'))))</RepoRoot>
     <WebClientDir>$(RepoRoot)apps/web-client</WebClientDir>
@@ -202,12 +212,15 @@
   </Target>
 
   <Target
-    Name="JellycheckrValidatePluginRouteVersion"
+    Name="JellycheckrValidateVersionMetadata"
     BeforeTargets="PrepareForBuild;Publish"
     Condition="'$(TargetFramework)' != ''">
     <Error
-      Condition="'$(JellycheckrPluginRouteVersion)' == ''"
-      Text="Jellycheckr plugin version '$(Version)' must start with a 3-part or 4-part numeric version (for example 0.1.0 or 0.1.0.0) so a Jellyfin plugin route version can be generated." />
+      Condition="'$(JellycheckrManifestVersion)' == '' or !$([System.Text.RegularExpressions.Regex]::IsMatch('$(JellycheckrManifestVersion)', '^\d+\.\d+\.\d+(\.\d+)?$'))"
+      Text="Jellycheckr manifest version '$(JellycheckrManifestVersion)' must be a 3-part or 4-part numeric version (for example 0.1.0 or 0.1.0.4)." />
+    <Error
+      Condition="'$(JellycheckrAssemblyVersionNumber)' == '' or !$([System.Text.RegularExpressions.Regex]::IsMatch('$(JellycheckrAssemblyVersionNumber)', '^\d+\.\d+\.\d+\.\d+$'))"
+      Text="Jellycheckr assembly version '$(JellycheckrAssemblyVersionNumber)' must be a 4-part numeric version (for example 0.1.0.0)." />
   </Target>
 
   <Target
@@ -227,10 +240,12 @@
       <JellycheckrPluginMetaJsonLines Include="  &quot;overview&quot;: &quot;Jellycheckr AYSW plugin with bundled web prompt UI and optional server fallback enforcement.&quot;," />
       <JellycheckrPluginMetaJsonLines Include="  &quot;owner&quot;: &quot;Jellycheckr&quot;," />
       <JellycheckrPluginMetaJsonLines Include="  &quot;category&quot;: &quot;General&quot;," />
-      <JellycheckrPluginMetaJsonLines Include="  &quot;version&quot;: &quot;$(JellycheckrPluginRouteVersion)&quot;," />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;version&quot;: &quot;$(JellycheckrManifestVersion)&quot;," />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;packageVersion&quot;: &quot;$(Version)&quot;," />
       <JellycheckrPluginMetaJsonLines Include="  &quot;targetAbi&quot;: &quot;$(JellycheckrTargetAbi)&quot;," />
       <JellycheckrPluginMetaJsonLines Include="  &quot;timestamp&quot;: &quot;$(JellycheckrPluginMetaTimestamp)&quot;," />
-      <JellycheckrPluginMetaJsonLines Include="  &quot;changelog&quot;: &quot;Packaged from local build.&quot;" />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;changelog&quot;: &quot;$(JellycheckrReleaseNotesJson)&quot;," />
+      <JellycheckrPluginMetaJsonLines Include="  &quot;dependencies&quot;: []" />
       <JellycheckrPluginMetaJsonLines Include="}" />
     </ItemGroup>
 
@@ -239,7 +254,7 @@
       Lines="@(JellycheckrPluginMetaJsonLines)"
       Overwrite="true" />
 
-    <Message Importance="High" Text="[Jellycheckr] Wrote plugin metadata: $(JellycheckrPluginMetaJsonPath) (version $(JellycheckrPluginRouteVersion))" />
+    <Message Importance="High" Text="[Jellycheckr] Wrote plugin metadata: $(JellycheckrPluginMetaJsonPath) (version $(JellycheckrManifestVersion), package $(Version))" />
   </Target>
 
   <Target
@@ -248,7 +263,7 @@
     DependsOnTargets="JellycheckrWritePluginMetaJson;JellycheckrCopyWebAssetsToPublishOutput"
     Condition="'$(TargetFramework)' == 'net8.0' and '$(JellycheckrCreatePluginZip)' == 'true'">
     <PropertyGroup>
-      <JellycheckrPluginZipPath>$(JellycheckrArtifactsDir)jellycheckr-server-plugin-$(Version).zip</JellycheckrPluginZipPath>
+      <JellycheckrPluginZipPath>$(JellycheckrArtifactsDir)$(JellycheckrPackageArtifactNameStem)_$(Version).zip</JellycheckrPluginZipPath>
     </PropertyGroup>
 
     <MakeDir Directories="$(JellycheckrArtifactsDir)" />

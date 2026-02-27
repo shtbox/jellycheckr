@@ -1,0 +1,246 @@
+name: Enterprise Release - Stage A
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or SHA to release from.
+        required: false
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  build_and_verify:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.release_context.outputs.should_release }}
+      release_version: ${{ steps.release_context.outputs.release_version }}
+      release_tag: ${{ steps.release_context.outputs.release_tag }}
+      release_sha: ${{ steps.release_context.outputs.release_sha }}
+      release_bundle_artifact: ${{ steps.release_context.outputs.release_bundle_artifact }}
+      release_name: ${{ steps.release_context.outputs.release_name }}
+      artifact_file_name: ${{ steps.release_context.outputs.artifact_file_name }}
+      manifest_version: ${{ steps.release_context.outputs.manifest_version }}
+      target_abi: ${{ steps.release_context.outputs.target_abi }}
+    steps:
+      - name: Checkout repository with tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - name: Setup .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: |
+            apps/config-ui/package-lock.json
+            apps/web-client/package-lock.json
+
+      - name: Resolve stable release context
+        id: release_context
+        shell: pwsh
+        run: |
+          $mode = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { 'manual' } else { 'push' }
+          $shaOverride = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { '' } else { '${{ github.sha }}' }
+
+          $contextJson = & ./.github/scripts/Get-ReleaseContext.ps1 `
+            -Mode $mode `
+            -Repository '${{ github.repository }}' `
+            -EventPath $env:GITHUB_EVENT_PATH `
+            -Sha $shaOverride `
+            -GitHubToken '${{ secrets.GITHUB_TOKEN }}'
+          $context = $contextJson | ConvertFrom-Json -Depth 20
+
+          if ($context.stableTagState -eq 'different-sha') {
+            throw "Stable tag $($context.stableTag) already exists on a different commit."
+          }
+
+          $shouldRelease = [bool]$context.shouldRelease
+          $releaseVersion = if ($context.stableVersion) { [string]$context.stableVersion } else { '' }
+          $releaseTag = if ($context.stableTag) { [string]$context.stableTag } else { '' }
+          $manifestVersion = if ($context.stableManifestVersion) { [string]$context.stableManifestVersion } else { '' }
+          $assemblyVersion = if ($context.stableAssemblyVersion) { [string]$context.stableAssemblyVersion } else { '' }
+          $releaseName = if ($context.stableReleaseTitle) { [string]$context.stableReleaseTitle } else { '' }
+          $artifactFileName = if ($releaseVersion) { "Jellycheckr_{0}.zip" -f $releaseVersion } else { '' }
+          $bundleArtifactName = if ($releaseTag) { "release-bundle-{0}" -f $releaseTag } else { '' }
+
+          if (-not $shouldRelease) {
+            $summary = @(
+              '## Stable Release Skipped'
+              ''
+              "- Reason: release type resolved to ``none``."
+              "- Source title: $($context.associatedPrTitle)"
+            ) -join "`n"
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary
+          }
+
+          "should_release=$($shouldRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "release_version=$releaseVersion" >> $env:GITHUB_OUTPUT
+          "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
+          "release_sha=$([string]$context.targetSha)" >> $env:GITHUB_OUTPUT
+          "release_bundle_artifact=$bundleArtifactName" >> $env:GITHUB_OUTPUT
+          "release_name=$releaseName" >> $env:GITHUB_OUTPUT
+          "artifact_file_name=$artifactFileName" >> $env:GITHUB_OUTPUT
+          "manifest_version=$manifestVersion" >> $env:GITHUB_OUTPUT
+          "target_abi=$([string]$context.computedTargetAbi)" >> $env:GITHUB_OUTPUT
+          "last_stable_tag=$([string]$context.lastStableTag)" >> $env:GITHUB_OUTPUT
+          "assembly_version=$assemblyVersion" >> $env:GITHUB_OUTPUT
+
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value (@(
+            '## Stable Release Context'
+            ''
+            "- Release type: $($context.releaseType)"
+            "- Next stable version: $(if ($releaseVersion) { $releaseVersion } else { 'n/a' })"
+            "- Next stable manifest version: $(if ($manifestVersion) { $manifestVersion } else { 'n/a' })"
+          ) -join "`n")
+
+      - name: Restore test dependencies
+        if: steps.release_context.outputs.should_release == 'true'
+        shell: pwsh
+        run: dotnet restore apps/server-plugin/tests/Jellycheckr.Server.Tests/Jellycheckr.Server.Tests.csproj
+
+      - name: Build server project
+        if: steps.release_context.outputs.should_release == 'true'
+        shell: pwsh
+        run: >
+          dotnet build
+          apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.csproj
+          -c Release
+          --no-restore
+          /p:JellycheckrBuildEmbeddedAssets=false
+
+      - name: Run server tests
+        if: steps.release_context.outputs.should_release == 'true'
+        shell: pwsh
+        run: >
+          dotnet test
+          apps/server-plugin/tests/Jellycheckr.Server.Tests/Jellycheckr.Server.Tests.csproj
+          -c Release
+          --no-restore
+          /p:JellycheckrBuildEmbeddedAssets=false
+
+      - name: Publish and validate stable package
+        if: steps.release_context.outputs.should_release == 'true'
+        id: package_bundle
+        shell: pwsh
+        run: |
+          $publishDirectory = Join-Path $env:RUNNER_TEMP 'stable-publish'
+          $artifactsDirectory = Join-Path $env:RUNNER_TEMP 'stable-artifacts'
+          $bundleDirectory = Join-Path $env:RUNNER_TEMP 'stable-release-bundle'
+
+          foreach ($path in @($publishDirectory, $artifactsDirectory, $bundleDirectory)) {
+            if (Test-Path -LiteralPath $path) {
+              Remove-Item -LiteralPath $path -Recurse -Force
+            }
+          }
+
+          dotnet publish `
+            apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.csproj `
+            -c Release `
+            -f net8.0 `
+            -o $publishDirectory `
+            /p:Version=${{ steps.release_context.outputs.release_version }} `
+            /p:JellycheckrManifestVersion=${{ steps.release_context.outputs.manifest_version }} `
+            /p:JellycheckrAssemblyVersionNumber=${{ steps.release_context.outputs.assembly_version }} `
+            /p:JellycheckrPackageArtifactNameStem=Jellycheckr `
+            /p:JellycheckrArtifactsDir=$artifactsDirectory
+
+          $zipPath = Join-Path $artifactsDirectory '${{ steps.release_context.outputs.artifact_file_name }}'
+          $null = & ./.github/scripts/Validate-PluginPackage.ps1 `
+            -ZipPath $zipPath `
+            -PublishDirectory $publishDirectory `
+            -ExpectedPackageVersion '${{ steps.release_context.outputs.release_version }}' `
+            -ExpectedManifestVersion '${{ steps.release_context.outputs.manifest_version }}' `
+            -ExpectedAssemblyVersion '${{ steps.release_context.outputs.assembly_version }}' `
+            -ExpectedTargetAbi '${{ steps.release_context.outputs.target_abi }}' `
+            -ExpectedZipFileName '${{ steps.release_context.outputs.artifact_file_name }}'
+
+          [System.IO.Directory]::CreateDirectory($bundleDirectory) | Out-Null
+          $releaseNotesPath = Join-Path $bundleDirectory 'release-notes.md'
+
+          if ('${{ steps.release_context.outputs.last_stable_tag }}') {
+            $null = & ./.github/scripts/Get-Changelog.ps1 -FromTag '${{ steps.release_context.outputs.last_stable_tag }}' -OutputPath $releaseNotesPath
+          }
+          else {
+            $null = & ./.github/scripts/Get-Changelog.ps1 -OutputPath $releaseNotesPath
+          }
+
+          Copy-Item -LiteralPath $zipPath -Destination (Join-Path $bundleDirectory '${{ steps.release_context.outputs.artifact_file_name }}')
+
+          $releaseContext = [ordered]@{
+            releaseVersion = '${{ steps.release_context.outputs.release_version }}'
+            manifestVersion = '${{ steps.release_context.outputs.manifest_version }}'
+            assemblyVersion = '${{ steps.release_context.outputs.assembly_version }}'
+            targetSha = '${{ steps.release_context.outputs.release_sha }}'
+            targetAbi = '${{ steps.release_context.outputs.target_abi }}'
+            tagName = '${{ steps.release_context.outputs.release_tag }}'
+            releaseTitle = '${{ steps.release_context.outputs.release_name }}'
+          } | ConvertTo-Json -Depth 5
+
+          Set-Content -LiteralPath (Join-Path $bundleDirectory 'release-context.json') -Value $releaseContext -NoNewline
+
+          $releaseBodyPreview = @(
+            '```jellycheckr-manifest'
+            '{'
+            ('  "version": "' + '${{ steps.release_context.outputs.manifest_version }}' + '",')
+            ('  "targetAbi": "' + '${{ steps.release_context.outputs.target_abi }}' + '",')
+            '  "dependencies": []'
+            '}'
+            '```'
+          ) -join "`n"
+
+          $summary = @(
+            '## Stable Package Ready'
+            ''
+            "- Version: ${{ steps.release_context.outputs.release_version }}"
+            "- Manifest version: ${{ steps.release_context.outputs.manifest_version }}"
+            "- Target ABI: ${{ steps.release_context.outputs.target_abi }}"
+            ''
+            '### Release Body Preview'
+            ''
+            $releaseBodyPreview
+          ) -join "`n"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary
+
+      - name: Upload stable release bundle
+        if: steps.release_context.outputs.should_release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.release_context.outputs.release_bundle_artifact }}
+          path: ${{ runner.temp }}/stable-release-bundle
+          if-no-files-found: error
+
+  release_and_publish:
+    if: needs.build_and_verify.outputs.should_release == 'true'
+    needs: build_and_verify
+    uses: ./.github/workflows/release-stage-b.yml
+    with:
+      release_version: ${{ needs.build_and_verify.outputs.release_version }}
+      release_tag: ${{ needs.build_and_verify.outputs.release_tag }}
+      release_sha: ${{ needs.build_and_verify.outputs.release_sha }}
+      release_bundle_artifact: ${{ needs.build_and_verify.outputs.release_bundle_artifact }}
+      release_name: ${{ needs.build_and_verify.outputs.release_name }}
+      artifact_file_name: ${{ needs.build_and_verify.outputs.artifact_file_name }}
+      manifest_version: ${{ needs.build_and_verify.outputs.manifest_version }}
+      target_abi: ${{ needs.build_and_verify.outputs.target_abi }}
+    secrets:
+      github_token: ${{ secrets.GITHUB_TOKEN }}
