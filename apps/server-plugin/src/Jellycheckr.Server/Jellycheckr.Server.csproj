@@ -263,10 +263,11 @@
     DependsOnTargets="JellycheckrWritePluginMetaJson;JellycheckrCopyWebAssetsToPublishOutput"
     Condition="'$(TargetFramework)' == 'net8.0' and '$(JellycheckrCreatePluginZip)' == 'true'">
     <PropertyGroup>
-      <JellycheckrPluginZipPath>$(JellycheckrArtifactsDir)$(JellycheckrPackageArtifactNameStem)_$(Version).zip</JellycheckrPluginZipPath>
+      <JellycheckrNormalizedArtifactsDir>$([MSBuild]::EnsureTrailingSlash('$(JellycheckrArtifactsDir)'))</JellycheckrNormalizedArtifactsDir>
+      <JellycheckrPluginZipPath>$(JellycheckrNormalizedArtifactsDir)$(JellycheckrPackageArtifactNameStem)_$(Version).zip</JellycheckrPluginZipPath>
     </PropertyGroup>
 
-    <MakeDir Directories="$(JellycheckrArtifactsDir)" />
+    <MakeDir Directories="$(JellycheckrNormalizedArtifactsDir)" />
     <Error Condition="!Exists('$(PublishDir)meta.json')" Text="Expected Jellyfin plugin metadata file was not produced: $(PublishDir)meta.json" />
     <Delete Files="$(JellycheckrPluginZipPath)" Condition="Exists('$(JellycheckrPluginZipPath)')" />
     <ZipDirectory SourceDirectory="$(PublishDir)" DestinationFile="$(JellycheckrPluginZipPath)" />
