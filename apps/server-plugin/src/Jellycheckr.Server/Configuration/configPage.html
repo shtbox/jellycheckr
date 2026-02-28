@@ -9,9 +9,10 @@
 
             <div class="detailSection">
                 <iframe
+                    id="jellycheckrConfigFrame"
                     title="Jellycheckr configuration"
                     src="/Plugins/Aysw/web/jellycheckr-config-ui-host.html"
-                    style="width:100%; min-height:1100px; border:0; background:transparent; border-radius:12px;"
+                    style="display:block; width:100%; min-height:72vh; height:72vh; border:0; background:transparent; border-radius:12px;"
                     loading="eager">
                 </iframe>
             </div>
@@ -21,4 +22,25 @@
             </p>
         </div>
     </div>
+
+    <script>
+        (function () {
+            var frame = document.getElementById('jellycheckrConfigFrame');
+            if (!frame) {
+                return;
+            }
+
+            function syncMinimumHeight() {
+                var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+                var nextHeight = Math.max(Math.round(viewportHeight * 0.72), 560);
+                frame.style.minHeight = nextHeight + 'px';
+                if (!frame.style.height || frame.style.height === '72vh') {
+                    frame.style.height = nextHeight + 'px';
+                }
+            }
+
+            syncMinimumHeight();
+            window.addEventListener('resize', syncMinimumHeight);
+        })();
+    </script>
 </div>
