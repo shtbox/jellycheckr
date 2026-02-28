@@ -39,7 +39,7 @@ jobs:
             -Repository '${{ github.repository }}' `
             -EventPath $env:GITHUB_EVENT_PATH `
             -Sha '${{ github.sha }}' `
-            -GitHubToken '${{ secrets.GITHUB_TOKEN }}'
+            -GitHubToken '${{ github.token }}'
           $contextPath = Join-Path $env:RUNNER_TEMP 'release-context.json'
           Set-Content -LiteralPath $contextPath -Value $contextJson -NoNewline
           $context = $contextJson | ConvertFrom-Json -Depth 20
@@ -51,7 +51,7 @@ jobs:
             -Repository '${{ github.repository }}' `
             -EventPath $env:GITHUB_EVENT_PATH `
             -Sha '${{ github.sha }}' `
-            -GitHubToken '${{ secrets.GITHUB_TOKEN }}' `
+            -GitHubToken '${{ github.token }}' `
             -PrereleaseChannel beta
           $betaPreview = $betaPreviewJson | ConvertFrom-Json -Depth 20
 
@@ -170,7 +170,7 @@ jobs:
         env:
           COMMENT_PATH: ${{ steps.preview_data.outputs.comment_path }}
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ github.token }}
           script: |
             const fs = require('fs');
             const marker = '<!-- jellycheckr-release-preview -->';

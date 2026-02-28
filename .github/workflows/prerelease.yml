@@ -89,6 +89,7 @@ jobs:
 
           $bumpOverride = switch ($env:GITHUB_EVENT_NAME) {
             'workflow_dispatch' { if ($env:MANUAL_BUMP_OVERRIDE) { $env:MANUAL_BUMP_OVERRIDE } else { 'auto' } }
+            'push' { 'patch' }
             default { 'auto' }
           }
 
@@ -103,7 +104,7 @@ jobs:
             -Repository '${{ github.repository }}' `
             -EventPath $env:GITHUB_EVENT_PATH `
             -Sha $shaOverride `
-            -GitHubToken '${{ secrets.GITHUB_TOKEN }}' `
+            -GitHubToken '${{ github.token }}' `
             -PrereleaseChannel $channel `
             -BumpOverride $bumpOverride
           $context = $contextJson | ConvertFrom-Json -Depth 20
@@ -340,7 +341,7 @@ jobs:
 
           $resultJson = & ./.github/scripts/Publish-GitHubRelease.ps1 `
             -Repository '${{ github.repository }}' `
-            -GitHubToken '${{ secrets.GITHUB_TOKEN }}' `
+            -GitHubToken '${{ github.token }}' `
             -TagName '${{ needs.prepare.outputs.tag_name }}' `
             -TargetSha '${{ needs.prepare.outputs.target_sha }}' `
             -ReleaseTitle '${{ needs.prepare.outputs.release_title }}' `

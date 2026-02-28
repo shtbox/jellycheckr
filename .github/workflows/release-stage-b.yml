@@ -27,9 +27,6 @@ on:
       target_abi:
         required: true
         type: string
-    secrets:
-      github_token:
-        required: true
 
 jobs:
   release_and_publish:
@@ -94,7 +91,7 @@ jobs:
 
           $resultJson = & ./.github/scripts/Publish-GitHubRelease.ps1 `
             -Repository '${{ github.repository }}' `
-            -GitHubToken '${{ secrets.github_token }}' `
+            -GitHubToken '${{ github.token }}' `
             -TagName '${{ inputs.release_tag }}' `
             -TargetSha '${{ inputs.release_sha }}' `
             -ReleaseTitle '${{ inputs.release_name }}' `

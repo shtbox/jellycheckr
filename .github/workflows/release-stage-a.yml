@@ -67,7 +67,7 @@ jobs:
             -Repository '${{ github.repository }}' `
             -EventPath $env:GITHUB_EVENT_PATH `
             -Sha $shaOverride `
-            -GitHubToken '${{ secrets.GITHUB_TOKEN }}'
+            -GitHubToken '${{ github.token }}'
           $context = $contextJson | ConvertFrom-Json -Depth 20
 
           if ($context.stableTagState -eq 'different-sha') {
@@ -242,5 +242,3 @@ jobs:
       artifact_file_name: ${{ needs.build_and_verify.outputs.artifact_file_name }}
       manifest_version: ${{ needs.build_and_verify.outputs.manifest_version }}
       target_abi: ${{ needs.build_and_verify.outputs.target_abi }}
-    secrets:
-      github_token: ${{ secrets.GITHUB_TOKEN }}
