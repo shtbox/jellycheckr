@@ -77,6 +77,7 @@ Recommended GitHub settings for `main`:
 
 Release and prerelease publishing rely on GitHub Actions permissions:
 
+- `pull-requests: read` for push-triggered workflows that resolve merged PR metadata (title, labels, and body) from a squash merge commit
 - `contents: write` for tag and GitHub Release creation
 - `issues: write` and `pull-requests: write` for the PR Release Preview comment
 - if repository policy keeps `GITHUB_TOKEN` read-only for the current context, the Release Preview workflow falls back to the job summary instead of posting a PR comment
@@ -301,6 +302,7 @@ Rules:
 
 - Symptom: tags, releases, or the Release Preview PR comment fail to update.
 - Fix: confirm the workflow has:
+  - `pull-requests: read` for push-triggered release context resolution
   - `contents: write` for release jobs
   - `issues: write` and `pull-requests: write` for the Release Preview workflow
   - repository `GITHUB_TOKEN` workflow permissions set to allow write access where comments/releases are expected
