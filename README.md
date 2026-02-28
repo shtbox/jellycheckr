@@ -78,17 +78,26 @@ Recommended GitHub settings for `main`:
 Release and prerelease publishing rely on GitHub Actions permissions:
 
 - `contents: write` for tag and GitHub Release creation
-- `issues: write` for the PR Release Preview comment
+- `issues: write` and `pull-requests: write` for the PR Release Preview comment
+- if repository policy keeps `GITHUB_TOKEN` read-only for the current context, the Release Preview workflow falls back to the job summary instead of posting a PR comment
 
 ### Conventional Commit PR titles
 
 PR titles must match:
 
-- `^(feat|fix|perf|refactor|docs|chore|test|build|ci)(\([^)]+\))?(!)?: .+`
+- `^[A-Za-z][A-Za-z0-9-]*(\([^)]+\))?(!)?: .+`
+
+This follows the Conventional Commits structure `type(scope)!: description`:
+
+- types are case-insensitive
+- custom types are allowed
+- the `: ` separator is required
 
 Valid examples:
 
 - `feat(ui): add setting`
+- `build: initial pipeline implementation`
+- `build(pipeline): Adding Pipeline`
 - `fix(api): avoid null response`
 - `feat!: remove legacy config`
 - `docs(readme): update install notes`
@@ -96,10 +105,11 @@ Valid examples:
 
 Release mapping:
 
+- any valid Conventional Commit type is accepted
 - `feat` => minor
 - `fix`, `perf` => patch
-- `!` or `BREAKING CHANGE:` => major
-- `docs`, `chore`, `ci`, `build`, `test`, `refactor` => no release by default
+- `!`, `BREAKING CHANGE:`, or `BREAKING-CHANGE:` => major
+- all other valid types => no release by default unless a release override label is applied
 
 ### Release labels
 
@@ -241,7 +251,7 @@ Rules:
 ### Invalid PR title
 
 - Symptom: `PR Validation / validate` fails immediately.
-- Fix: rename the PR title to a valid Conventional Commit format.
+- Fix: rename the PR title to `type(scope)!: description` and keep the required `: ` separator.
 
 ### No release produced
 
@@ -292,7 +302,8 @@ Rules:
 - Symptom: tags, releases, or the Release Preview PR comment fail to update.
 - Fix: confirm the workflow has:
   - `contents: write` for release jobs
-  - `issues: write` for the Release Preview workflow
+  - `issues: write` and `pull-requests: write` for the Release Preview workflow
+  - repository `GITHUB_TOKEN` workflow permissions set to allow write access where comments/releases are expected
 
 ## Compatibility
 

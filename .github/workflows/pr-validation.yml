@@ -43,18 +43,22 @@ jobs:
         shell: pwsh
         run: |
           $title = "${{ github.event.pull_request.title }}"
-          $pattern = '^(feat|fix|perf|refactor|docs|chore|test|build|ci)(\([^)]+\))?(!)?: .+'
+          $pattern = '^[A-Za-z][A-Za-z0-9-]*(\([^)]+\))?(!)?: .+'
 
           if ($title -notmatch $pattern) {
-            Write-Error @"
-            PR titles must follow Conventional Commits.
+            $message = @(
+              'PR titles must follow Conventional Commits: type(scope)!: description',
+              '',
+              'The ": " separator is required.',
+              '',
+              'Valid examples:',
+              '- feat(ui): add setting',
+              '- build: initial pipeline implementation',
+              '- build(pipeline): Adding Pipeline',
+              '- feat!: remove legacy config'
+            ) -join "`n"
 
-            Valid examples:
-            - feat(ui): add setting
-            - fix(api): avoid null response
-            - feat!: remove legacy config
-            - docs(readme): update install notes
-            "@
+            Write-Error $message
           }
 
       - name: Restore test dependencies

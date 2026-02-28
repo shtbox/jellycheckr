@@ -18,14 +18,18 @@ function Parse-ConventionalCommit {
         [string]$Body
     )
 
-    $pattern = "^(?<type>feat|fix|perf|refactor|docs|chore|test|build|ci)(\([^)]+\))?(?<breaking>!)?: (?<description>.+)$"
-    $match = [System.Text.RegularExpressions.Regex]::Match($Title, $pattern)
+    $pattern = "^(?<type>[A-Za-z][A-Za-z0-9-]*)(\((?<scope>[^()\r\n]+)\))?(?<breaking>!)?: (?<description>.+)$"
+    $match = [System.Text.RegularExpressions.Regex]::Match(
+        $Title,
+        $pattern,
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    )
     if (-not $match.Success) {
         return $null
     }
 
-    $type = $match.Groups["type"].Value
-    $isBreaking = $match.Groups["breaking"].Success -or ($Body -match "(?im)^BREAKING CHANGE:")
+    $type = $match.Groups["type"].Value.ToLowerInvariant()
+    $isBreaking = $match.Groups["breaking"].Success -or ($Body -match "(?im)^(BREAKING CHANGE|BREAKING-CHANGE): ")
     $section = switch ($type) {
         "feat" { "Features" }
         "fix" { "Fixes" }
