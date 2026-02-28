@@ -1,0 +1,216 @@
+name: Release Preview
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - edited
+      - synchronize
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: release-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository with tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute release preview
+        id: preview_data
+        shell: pwsh
+        run: |
+          $contextJson = & ./.github/scripts/Get-ReleaseContext.ps1 `
+            -Mode pr `
+            -Repository '${{ github.repository }}' `
+            -EventPath $env:GITHUB_EVENT_PATH `
+            -Sha '${{ github.sha }}' `
+            -GitHubToken '${{ github.token }}'
+          $contextPath = Join-Path $env:RUNNER_TEMP 'release-context.json'
+          Set-Content -LiteralPath $contextPath -Value $contextJson -NoNewline
+          $context = $contextJson | ConvertFrom-Json -Depth 20
+          $eventPayload = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json -Depth 20
+          $pendingBody = [string]$eventPayload.pull_request.body
+
+          $betaPreviewJson = & ./.github/scripts/Get-ReleaseContext.ps1 `
+            -Mode pr `
+            -Repository '${{ github.repository }}' `
+            -EventPath $env:GITHUB_EVENT_PATH `
+            -Sha '${{ github.sha }}' `
+            -GitHubToken '${{ github.token }}' `
+            -PrereleaseChannel beta
+          $betaPreview = $betaPreviewJson | ConvertFrom-Json -Depth 20
+
+          $releaseNotesPath = Join-Path $env:RUNNER_TEMP 'release-preview-notes.md'
+          $previewMarkdownPath = Join-Path $env:RUNNER_TEMP 'release-preview-markdown.md'
+          $summaryMarkdownPath = Join-Path $env:RUNNER_TEMP 'release-preview-summary.md'
+
+          if ($context.lastStableTag) {
+            $null = & ./.github/scripts/Get-Changelog.ps1 `
+              -FromTag $context.lastStableTag `
+              -PendingTitle $context.associatedPrTitle `
+              -PendingBody $pendingBody `
+              -OutputPath $releaseNotesPath `
+              -PreviewPath $previewMarkdownPath `
+              -SummaryPath $summaryMarkdownPath
+          }
+          else {
+            $null = & ./.github/scripts/Get-Changelog.ps1 `
+              -PendingTitle $context.associatedPrTitle `
+              -PendingBody $pendingBody `
+              -OutputPath $releaseNotesPath `
+              -PreviewPath $previewMarkdownPath `
+              -SummaryPath $summaryMarkdownPath
+          }
+
+          $previewMarkdown = Get-Content -LiteralPath $previewMarkdownPath -Raw
+          $releaseBodyPreview = if ($context.prereleaseReleaseBody) {
+            [string]$context.prereleaseReleaseBody
+          }
+          elseif ($context.stableReleaseBody) {
+            [string]$context.stableReleaseBody
+          }
+          else {
+            "No release would be produced."
+          }
+
+          $betaCandidate = if ($betaPreview.prereleaseVersion) { [string]$betaPreview.prereleaseVersion } else { "n/a" }
+          $rcCandidate = if ($betaPreview.prereleaseCounter) {
+            "{0}-rc.{1}" -f $betaPreview.stableVersion, $betaPreview.prereleaseCounter
+          }
+          else {
+            "n/a"
+          }
+
+          $summaryLines = @(
+            "## Release Preview"
+            ""
+            "- Release type: $($context.releaseType)"
+            "- Stable release on merge: $(if ($context.shouldRelease) { 'yes' } else { 'no' })"
+            "- Next stable version: $(if ($context.stableVersion) { $context.stableVersion } else { 'n/a' })"
+            "- Next stable manifest version: $(if ($context.stableManifestVersion) { $context.stableManifestVersion } else { 'n/a' })"
+            "- Last stable tag: $(if ($context.lastStableTag) { $context.lastStableTag } else { 'none (using 0.1.0 baseline)' })"
+          )
+
+          if ($context.prereleaseVersion) {
+            $summaryLines += "- Opt-in prerelease: $($context.prereleaseVersion) (manifest $($context.prereleaseManifestVersion))"
+          }
+          elseif ($context.shouldRelease) {
+            $summaryLines += "- Next beta candidate: $betaCandidate"
+            $summaryLines += "- Next rc candidate: $rcCandidate"
+          }
+          else {
+            $summaryLines += "- Opt-in prerelease: n/a (no release bump resolved)"
+          }
+
+          $summaryLines += @(
+            ""
+            "### Release Body Preview"
+            ""
+            $releaseBodyPreview
+            ""
+            $previewMarkdown
+          )
+
+          $summaryText = [string]::Join("`n", $summaryLines)
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summaryText
+
+          $commentLines = @(
+            "<!-- jellycheckr-release-preview -->"
+            "## Release Preview"
+            ""
+            "- Release type: $($context.releaseType)"
+            "- Stable release on merge: $(if ($context.shouldRelease) { 'yes' } else { 'no' })"
+            "- Next stable version: $(if ($context.stableVersion) { $context.stableVersion } else { 'n/a' })"
+            "- Next stable manifest version: $(if ($context.stableManifestVersion) { $context.stableManifestVersion } else { 'n/a' })"
+          )
+
+          if ($context.prereleaseVersion) {
+            $commentLines += "- Opt-in prerelease: $($context.prereleaseVersion) (manifest $($context.prereleaseManifestVersion))"
+          }
+          elseif ($context.shouldRelease) {
+            $commentLines += "- Next beta candidate: $betaCandidate"
+            $commentLines += "- Next rc candidate: $rcCandidate"
+          }
+          else {
+            $commentLines += "- Opt-in prerelease: n/a (no release bump resolved)"
+          }
+
+          $commentLines += @(
+            ""
+            "### Release Body Preview"
+            ""
+            $releaseBodyPreview
+            ""
+            $previewMarkdown
+          )
+
+          $commentPath = Join-Path $env:RUNNER_TEMP 'release-preview-comment.md'
+          Set-Content -LiteralPath $commentPath -Value ([string]::Join("`n", $commentLines)) -NoNewline
+
+          "comment_path=$commentPath" >> $env:GITHUB_OUTPUT
+
+      - name: Upsert preview PR comment
+        uses: actions/github-script@v7
+        env:
+          COMMENT_PATH: ${{ steps.preview_data.outputs.comment_path }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- jellycheckr-release-preview -->';
+            const body = fs.readFileSync(process.env.COMMENT_PATH, 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            try {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number,
+                per_page: 100
+              });
+
+              const existing = comments.find(comment =>
+                comment.user?.type === 'Bot' &&
+                typeof comment.body === 'string' &&
+                comment.body.includes(marker)
+              );
+
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: existing.id,
+                  body
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number,
+                  body
+                });
+              }
+            } catch (error) {
+              const status = error?.status ?? 'unknown';
+              core.warning(
+                `Skipping PR comment update because the workflow token cannot write issue comments in this context (status: ${status}). ` +
+                'The Release Preview remains available in the job summary.'
+              );
+            }
