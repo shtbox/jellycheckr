@@ -172,7 +172,6 @@ jobs:
         with:
           github-token: ${{ github.token }}
           script: |
-            const core = require('@actions/core');
             const fs = require('fs');
             const marker = '<!-- jellycheckr-release-preview -->';
             const body = fs.readFileSync(process.env.COMMENT_PATH, 'utf8');
