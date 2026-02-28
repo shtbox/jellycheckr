@@ -313,9 +313,15 @@ function Resolve-AssociatedPullRequest {
 
     if ($Mode -eq "push") {
         if (-not [string]::IsNullOrWhiteSpace($Repository) -and -not [string]::IsNullOrWhiteSpace($GitHubToken)) {
-            $pullRequests = Invoke-GitHubApi -Method GET -Path "/repos/$Repository/commits/$ResolvedSha/pulls" -AllowNotFound
-            if ($null -ne $pullRequests -and @($pullRequests).Count -gt 0) {
-                return @($pullRequests)[0]
+            try {
+                $pullRequests = Invoke-GitHubApi -Method GET -Path "/repos/$Repository/commits/$ResolvedSha/pulls" -AllowNotFound
+                if ($null -ne $pullRequests -and @($pullRequests).Count -gt 0) {
+                    return @($pullRequests)[0]
+                }
+            }
+            catch {
+                $statusCode = Get-StatusCode -ErrorRecord $_
+                Write-Warning ("Unable to resolve the associated pull request for commit {0}. Falling back to the commit message. Status: {1}" -f $ResolvedSha, $(if ($null -ne $statusCode) { $statusCode } else { "unknown" }))
             }
         }
     }

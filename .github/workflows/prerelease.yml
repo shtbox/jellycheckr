@@ -39,6 +39,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: prerelease-${{ github.event.pull_request.number || github.ref_name || github.event.inputs.ref || github.run_id }}
