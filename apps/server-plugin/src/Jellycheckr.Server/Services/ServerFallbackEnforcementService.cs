@@ -129,12 +129,6 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
             MarkInferredActivity(state, snapshot.LastPausedUtc ?? nowUtc, "pause_signal");
         }
 
-        if (HasMeaningfulLastActivityChange(state, snapshot)
-            && !ShouldSuppressPassiveActivityDuringPauseGrace(state, snapshot))
-        {
-            MarkInferredActivity(state, snapshot.LastActivityUtc ?? nowUtc, "last_activity");
-        }
-
         if (previousPaused == true && snapshot.IsPaused == false)
         {
             MarkInferredActivity(state, nowUtc, "resume_signal");
@@ -145,7 +139,11 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         var hasCurrentItem = !string.IsNullOrWhiteSpace(snapshot.ItemId);
         if (!hasCurrentItem)
         {
-            state.PreviousItemId = state.CurrentItemId;
+            if (!string.IsNullOrWhiteSpace(state.CurrentItemId))
+            {
+                state.PreviousItemId = state.CurrentItemId;
+            }
+
             state.CurrentItemId = null;
             state.CurrentItemName = null;
             state.LastObservedPositionTicks = null;
@@ -156,17 +154,20 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
             return;
         }
 
-        var itemChanged = !string.IsNullOrWhiteSpace(previousItemId)
-            && !string.Equals(previousItemId, snapshot.ItemId, StringComparison.OrdinalIgnoreCase);
+        var comparisonItemId = !string.IsNullOrWhiteSpace(previousItemId)
+            ? previousItemId
+            : state.PreviousItemId;
+        var itemChanged = !string.IsNullOrWhiteSpace(comparisonItemId)
+            && !string.Equals(comparisonItemId, snapshot.ItemId, StringComparison.OrdinalIgnoreCase);
 
         if (itemChanged)
         {
-            state.PreviousItemId = previousItemId;
+            state.PreviousItemId = comparisonItemId;
             state.ServerFallbackEpisodeTransitionsSinceReset = Math.Max(0, state.ServerFallbackEpisodeTransitionsSinceReset) + 1;
             _logger.LogJellycheckrTrace(
                 "Detected playback item transition session={SessionId} fromItem={FromItem} toItem={ToItem} transitionsSinceReset={Transitions}",
                 state.SessionId,
-                previousItemId,
+                comparisonItemId,
                 snapshot.ItemId,
                 state.ServerFallbackEpisodeTransitionsSinceReset);
         }
@@ -451,9 +452,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
     {
         var minutesPlayed = TimeSpan.FromTicks(Math.Max(0, state.ServerFallbackPlaybackTicksSinceReset)).TotalMinutes;
         var transitions = Math.Max(0, state.ServerFallbackEpisodeTransitionsSinceReset);
-        var activityAnchor = state.LastInferredActivityUtc != DateTimeOffset.MinValue
-            ? state.LastInferredActivityUtc
-            : (state.LastSeenUtc != DateTimeOffset.MinValue ? state.LastSeenUtc : nowUtc);
+        var activityAnchor = ResolveActivityAnchor(state, nowUtc);
         var inactivityMinutes = Math.Max(0, (nowUtc - activityAnchor).TotalMinutes);
 
         return ServerFallbackDecision.Skip(
@@ -549,39 +548,6 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
             : !previous.HasValue && current.HasValue;
     }
 
-    private static bool HasMeaningfulLastActivityChange(SessionState state, ServerObservedSessionSnapshot snapshot)
-    {
-        if (!HasAdvanced(state.LastObservedLastActivityDateUtc, snapshot.LastActivityUtc))
-        {
-            return false;
-        }
-
-        if (!snapshot.LastActivityUtc.HasValue || !snapshot.LastPlaybackCheckInUtc.HasValue)
-        {
-            return false;
-        }
-
-        if (!HasAdvanced(state.LastObservedLastPlaybackCheckInUtc, snapshot.LastPlaybackCheckInUtc))
-        {
-            return false;
-        }
-
-        return (snapshot.LastActivityUtc.Value - snapshot.LastPlaybackCheckInUtc.Value).Duration() > TimeSpan.FromSeconds(2);
-    }
-
-    private static bool ShouldSuppressPassiveActivityDuringPauseGrace(SessionState state, ServerObservedSessionSnapshot snapshot)
-    {
-        if (state.FallbackPhase != ServerFallbackPhase.PauseGracePending || state.PauseIssuedUtc is null)
-        {
-            return false;
-        }
-
-        // While waiting out the grace window, some clients emit LastActivity updates during normal playback
-        // heartbeats (including when they ignore our pause command). Those must not count as user activity,
-        // or the grace window is immediately "resolved" and we remain in a cooldown loop forever.
-        return true;
-    }
-
     private static bool IsLikelyServerIssuedPauseObservation(SessionState state, DateTimeOffset? observedPauseUtc)
     {
         if (state.FallbackPhase != ServerFallbackPhase.PauseGracePending || state.PauseIssuedUtc is null || !observedPauseUtc.HasValue)
@@ -608,6 +574,27 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         }
 
         return (state.LastInferredActivityUtc - state.LastObservedLastPausedDateUtc.Value).Duration() <= TimeSpan.FromSeconds(2);
+    }
+
+    private static DateTimeOffset ResolveActivityAnchor(SessionState state, DateTimeOffset nowUtc)
+    {
+        var lastInteractionUtc = state.LastInteractionUtc > DateTimeOffset.MinValue
+            ? state.LastInteractionUtc
+            : DateTimeOffset.MinValue;
+        var lastInferredActivityUtc = state.LastInferredActivityUtc > DateTimeOffset.MinValue
+            ? state.LastInferredActivityUtc
+            : DateTimeOffset.MinValue;
+
+        if (lastInteractionUtc > DateTimeOffset.MinValue || lastInferredActivityUtc > DateTimeOffset.MinValue)
+        {
+            return lastInteractionUtc >= lastInferredActivityUtc
+                ? lastInteractionUtc
+                : lastInferredActivityUtc;
+        }
+
+        return state.LastSeenUtc != DateTimeOffset.MinValue
+            ? state.LastSeenUtc
+            : nowUtc;
     }
 
     private static bool IsLikelyWebClient(SessionState state)

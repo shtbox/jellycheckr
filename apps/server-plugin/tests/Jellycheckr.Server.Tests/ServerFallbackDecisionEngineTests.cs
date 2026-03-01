@@ -76,6 +76,26 @@ public sealed class ServerFallbackDecisionEngineTests
     }
 
     [Fact]
+    public void DoesNotTrigger_WhenMinutesThresholdMetButRecentInteractionExists()
+    {
+        var state = BaseState();
+        state.ServerFallbackPlaybackTicksSinceReset = TimeSpan.FromMinutes(121).Ticks;
+        state.LastInferredActivityUtc = Now.AddHours(-2);
+        state.LastInteractionUtc = Now.AddMinutes(-5);
+
+        var config = BaseConfig();
+        config.EnableEpisodeCheck = false;
+        config.EnableTimerCheck = true;
+        config.MinutesThreshold = 120;
+        config.ServerFallbackInactivityMinutes = 30;
+
+        var decision = _engine.Evaluate(state, config, Now);
+
+        Assert.False(decision.ShouldTrigger);
+        Assert.Equal("inactivity_not_met", decision.Reason);
+    }
+
+    [Fact]
     public void Triggers_WhenEitherThresholdMet_WithOrSemantics()
     {
         var state = BaseState();

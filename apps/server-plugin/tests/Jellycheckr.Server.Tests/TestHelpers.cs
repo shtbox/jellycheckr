@@ -54,3 +54,20 @@ internal sealed class StubConfigService : IConfigService
         throw new NotSupportedException("StubConfigService does not persist config.");
     }
 }
+
+internal sealed class StubSessionSnapshotProvider : IServerFallbackSessionSnapshotProvider
+{
+    public IReadOnlyList<ServerObservedSessionSnapshot> GetCurrentSessions() => Array.Empty<ServerObservedSessionSnapshot>();
+}
+
+internal sealed class StubJellyfinSessionCommandDispatcher : IJellyfinSessionCommandDispatcher
+{
+    public Task<bool> TrySendPauseAsync(string sessionId, string? controllingUserId, CancellationToken cancellationToken)
+        => Task.FromResult(true);
+
+    public Task<bool> TrySendStopAsync(string sessionId, string? controllingUserId, CancellationToken cancellationToken)
+        => Task.FromResult(true);
+
+    public Task<bool> TrySendMessageAsync(string sessionId, string? controllingUserId, string message, CancellationToken cancellationToken)
+        => Task.FromResult(true);
+}

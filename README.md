@@ -225,6 +225,123 @@ Prerelease artifacts appear in:
 - the `Prerelease Build` workflow artifact (when publish is allowed)
 - the GitHub prerelease assets, including the zip, `<zip-name>.md5`, and `release-notes.md`
 
+### Common release tasks
+
+Use these label combinations and workflow paths for the most common release scenarios.
+
+#### Publish a normal stable release from a PR to `main`
+
+1. Open a PR targeting `main`.
+2. Use a releasable Conventional Commit title:
+   - `feat(...)` for a minor release
+   - `fix(...)` or `perf(...)` for a patch release
+   - `...!:` or include `BREAKING CHANGE:` for a major release
+3. Do not add any override label unless you want to change the inferred bump.
+4. Merge with squash.
+
+Result:
+
+- `Release Preview` shows the computed stable version before merge
+- merge to `main` triggers `Enterprise Release - Stage A`
+- if Stage A succeeds, `Enterprise Release - Stage B` publishes the stable release
+
+#### Force a stable release when the PR title would normally produce no release
+
+Use this when the PR title is something like `build: ...`, `docs: ...`, `chore: ...`, or another valid type that maps to no release by default.
+
+Before merge:
+
+1. Add one of these labels to the PR:
+   - `release:patch`
+   - `release:minor`
+   - `release:major`
+2. Merge with squash.
+
+After merge (recovery path):
+
+1. Add one of the same override labels to the merged PR.
+2. Re-run the original `Enterprise Release - Stage A` workflow run for that merge commit.
+
+Result:
+
+- the override label becomes the release source of truth for the bump
+- Stage A computes the forced stable version and Stage B publishes it
+
+#### Prevent a release entirely
+
+1. Add `release:skip` to the PR.
+2. Merge normally if you still want the code on `main`.
+
+Result:
+
+- `Release Preview` shows no release
+- Stage A exits successfully without packaging or publishing
+- Stage B does not run
+
+#### Publish a prerelease from a PR targeting `main`
+
+1. Open a PR targeting `main`.
+2. Add one prerelease channel label:
+   - `release:beta`
+   - `release:rc`
+3. Make sure the PR also resolves to a release bump:
+   - use a releasable title (`feat`, `fix`, `perf`, breaking change), or
+   - add `release:patch`, `release:minor`, or `release:major`
+
+Result:
+
+- `Release Preview` shows the exact prerelease version and numeric manifest version
+- `Prerelease Build` packages and publishes the prerelease from the PR
+- the eventual stable release still waits for merge to `main`
+
+Examples:
+
+- `feat(api): add endpoint` + `release:beta` => publishes a beta prerelease
+- `build: initial pipeline implementation` + `release:patch` + `release:beta` => forces a patch prerelease
+
+#### Build a preview package from a non-`main` branch without publishing
+
+1. Push the branch.
+
+Result:
+
+- `Prerelease Build` runs automatically in preview mode
+- it computes a beta-style prerelease version
+- it builds, tests, packages, and validates the prerelease
+- it does **not** upload release assets
+- it does **not** create a tag
+- it does **not** create a GitHub Release
+
+This path is for validation only. No PR labels are required.
+
+#### Publish a prerelease from a non-`main` branch
+
+This is not done by branch push alone. Non-`main` pushes are preview-only.
+
+To actually publish:
+
+1. Go to `Actions` in GitHub.
+2. Run the `Prerelease Build` workflow manually (`workflow_dispatch`).
+3. Set:
+   - `ref` to the branch name or exact commit SHA
+   - `channel` to `beta` or `rc`
+   - `bump_override` to:
+     - `auto` if the branch head commit title already resolves to a release bump
+     - `patch`, `minor`, or `major` if you need to force the prerelease bump
+
+Result:
+
+- the workflow builds and validates the prerelease package from that branch
+- it creates or updates the prerelease tag and GitHub prerelease
+- it uploads the zip, `<zip-name>.md5`, and `release-notes.md`
+
+Example:
+
+- To publish a beta from `feature/new-ui` even if the latest commit is `build: adjust css`, run `Prerelease Build` manually with:
+  - `ref = feature/new-ui`
+  - `channel = beta`
+  - `bump_override = patch`
+
 ### GitHub Release body format
 
 The GitHub Release body is intentionally not a changelog.
