@@ -190,7 +190,13 @@ async function ensureAutoMounted(reason: string): Promise<void> {
     return;
   }
 
-  if (activeModule && activeVideo === video) {
+  if (activeModule && hasStableActiveVideo()) {
+    if (activeVideo !== video) {
+      debug("Keeping current mounted video binding despite a different candidate video", {
+        reason,
+        currentVideoConnected: activeVideo?.isConnected ?? false
+      });
+    }
     return;
   }
 
@@ -395,6 +401,10 @@ async function unregisterActiveSession(reason: string): Promise<void> {
 }
 
 function findBestVideoElement(): HTMLVideoElement | null {
+  if (hasStableActiveVideo()) {
+    return activeVideo;
+  }
+
   const videos = Array.from(document.querySelectorAll("video"))
     .filter((node): node is HTMLVideoElement => node instanceof HTMLVideoElement);
 
@@ -404,6 +414,10 @@ function findBestVideoElement(): HTMLVideoElement | null {
 
   const visible = videos.find((video) => video.getClientRects().length > 0);
   return visible ?? videos[0] ?? null;
+}
+
+function hasStableActiveVideo(): boolean {
+  return activeVideo instanceof HTMLVideoElement && activeVideo.isConnected;
 }
 
 function createDomPlayerAdapter(video: HTMLVideoElement): PlayerAdapter {
