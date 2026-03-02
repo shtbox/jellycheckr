@@ -15,6 +15,15 @@ paths:
   /Plugins/Aysw/sessions/{sessionId}/prompt-shown:
     post:
       summary: Mark prompt displayed to user
+  /Plugins/Aysw/web-client/register:
+    post:
+      summary: Register a web client session and disarm fallback for that session
+  /Plugins/Aysw/web-client/heartbeat:
+    post:
+      summary: Renew a registered web client session lease
+  /Plugins/Aysw/web-client/unregister:
+    post:
+      summary: Clear a registered web client session lease
   /Plugins/Aysw/admin/config:
     get:
       summary: Get admin config

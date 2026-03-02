@@ -190,9 +190,9 @@ public sealed class ServerFallbackEnforcementServiceInferenceTests
             new SessionStateStore(NullLogger<SessionStateStore>.Instance),
             new StubConfigService(),
             new StubSessionSnapshotProvider(),
+            new SessionStateObserver(NullLogger<SessionStateObserver>.Instance),
             new ServerFallbackDecisionEngine(),
             new StubJellyfinSessionCommandDispatcher(),
-            new WebUiInjectionState(),
             new FakeClock(nowUtc),
             NullLogger<ServerFallbackEnforcementService>.Instance);
     }

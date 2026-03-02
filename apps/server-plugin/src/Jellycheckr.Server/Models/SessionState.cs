@@ -40,6 +40,8 @@ public sealed class SessionState
     public string? LastFallbackActionResult { get; set; }
     public string? LastFallbackDecisionKey { get; set; }
     public DateTimeOffset? LastFallbackDecisionLoggedUtc { get; set; }
+    public bool WebUiRegistered { get; set; }
+    public DateTimeOffset? WebUiRegistrationLeaseUtc { get; set; }
 }
 
 public enum ServerFallbackPhase

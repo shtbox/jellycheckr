@@ -59,4 +59,33 @@ public sealed class AckServiceTests
         Assert.Null(state.PauseIssuedUtc);
         Assert.Null(state.PauseGraceDeadlineUtc);
     }
+
+    [Fact]
+    public void Interaction_FromWebClient_RenewsWebRegistrationLease()
+    {
+        var clock = new FakeClock(DateTimeOffset.Parse("2026-02-22T20:25:00Z"));
+        var store = new SessionStateStore(NullLogger<SessionStateStore>.Instance);
+        var svc = new AckService(store, clock, NullLogger<AckService>.Instance);
+
+        _ = svc.HandleInteraction("s1", new InteractionRequest { EventType = "keydown", ClientType = "web" });
+
+        var state = store.GetOrCreate("s1");
+        Assert.True(state.WebUiRegistered);
+        Assert.Equal(clock.UtcNow.Add(WebUiRegistrationLeasePolicy.LeaseDuration), state.WebUiRegistrationLeaseUtc);
+    }
+
+    [Fact]
+    public void PromptShown_FromWebClient_RenewsWebRegistrationLease()
+    {
+        var clock = new FakeClock(DateTimeOffset.Parse("2026-02-22T20:30:00Z"));
+        var store = new SessionStateStore(NullLogger<SessionStateStore>.Instance);
+        var svc = new AckService(store, clock, NullLogger<AckService>.Instance);
+
+        svc.MarkPromptActive("s1", clock.UtcNow.AddSeconds(45), "web");
+
+        var state = store.GetOrCreate("s1");
+        Assert.True(state.PromptActive);
+        Assert.True(state.WebUiRegistered);
+        Assert.Equal(clock.UtcNow.Add(WebUiRegistrationLeasePolicy.LeaseDuration), state.WebUiRegistrationLeaseUtc);
+    }
 }

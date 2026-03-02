@@ -6,6 +6,7 @@ export interface MediaItem {
 
 export interface PlayerAdapter {
   getSessionId(): string;
+  getDeviceId?(): string | null;
   getCurrentItem(): MediaItem | null;
   stopPlayback(): void;
   exitPlaybackView?(): void;

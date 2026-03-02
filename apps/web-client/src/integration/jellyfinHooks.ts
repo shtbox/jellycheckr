@@ -22,17 +22,27 @@ export interface AyswModule {
   dispose(): void;
 }
 
-export async function mountAysw(player: PlayerAdapter): Promise<AyswModule> {
+export interface WebClientBootstrapContext {
+  config: EffectiveConfigResponse;
+  deviceId?: string | null;
+}
+
+export async function mountAysw(player: PlayerAdapter, bootstrap?: WebClientBootstrapContext): Promise<AyswModule> {
   const api = new HttpApiClient();
   let config: EffectiveConfigResponse;
-  try {
-    config = withSafeDefaults(await api.getEffectiveConfig());
-  } catch (err) {
-    warn("Failed to load effective config", err);
-    throw err;
+  if (bootstrap?.config) {
+    config = withSafeDefaults(bootstrap.config);
+  } else {
+    try {
+      config = withSafeDefaults(await api.getEffectiveConfig());
+    } catch (err) {
+      warn("Failed to load effective config", err);
+      throw err;
+    }
   }
   setDebugLogging(config.debugLogging || config.developerMode);
-  const sessionId = player.getSessionId();
+  const resolveSessionId = (): string => player.getSessionId();
+  const resolveDeviceId = (): string | undefined => bootstrap?.deviceId ?? player.getDeviceId?.() ?? undefined;
   const modal = createModalController();
   let state = createInitialState(Date.now());
   let lastMouseMoveTs = 0;
@@ -42,7 +52,7 @@ export async function mountAysw(player: PlayerAdapter): Promise<AyswModule> {
   const hudSnapshot: AyswDeveloperHudSnapshot | null = devHud
     ? {
         moduleState: "mounting",
-        sessionId,
+        sessionId: resolveSessionId(),
         mountedAtTs: Date.now(),
         config,
         currentItem: player.getCurrentItem(),
@@ -93,6 +103,7 @@ export async function mountAysw(player: PlayerAdapter): Promise<AyswModule> {
       return;
     }
 
+    hudSnapshot.sessionId = resolveSessionId();
     hudSnapshot.currentItem = player.getCurrentItem();
     hudSnapshot.state = state;
     hudSnapshot.modalVisible = modalVisible;
@@ -133,7 +144,7 @@ export async function mountAysw(player: PlayerAdapter): Promise<AyswModule> {
   };
 
   debug("Mounting AYSW module", {
-    sessionId,
+    sessionId: resolveSessionId(),
     config: {
       enabled: config.enabled,
       enableEpisodeCheck: config.enableEpisodeCheck,
@@ -179,11 +190,12 @@ export async function mountAysw(player: PlayerAdapter): Promise<AyswModule> {
       itemId: currentItem?.id
     });
     try {
-      await api.sendInteraction(sessionId, {
+      await api.sendInteraction(resolveSessionId(), {
         eventType,
         clientTimeUtc: new Date(now).toISOString(),
         itemId: currentItem?.id,
-        clientType: "web"
+        clientType: "web",
+        deviceId: resolveDeviceId()
       });
       if (hudSnapshot) {
         hudSnapshot.lastInteraction.sendStatus = "ok";
@@ -250,7 +262,7 @@ export async function mountAysw(player: PlayerAdapter): Promise<AyswModule> {
 
     debug("Evaluate prompt conditions", {
       trigger,
-      sessionId,
+      sessionId: resolveSessionId(),
       nowIso: new Date(now).toISOString(),
       currentItem,
       promptEligible,
@@ -298,10 +310,11 @@ export async function mountAysw(player: PlayerAdapter): Promise<AyswModule> {
       timeoutSeconds: config.promptTimeoutSeconds
     });
     try {
-      await api.sendPromptShown(sessionId, {
+      await api.sendPromptShown(resolveSessionId(), {
         timeoutSeconds: config.promptTimeoutSeconds,
         itemId: currentItem?.id,
-        clientType: "web"
+        clientType: "web",
+        deviceId: resolveDeviceId()
       });
       if (hudSnapshot) {
         hudSnapshot.lastPrompt.shownSendStatus = "ok";
@@ -350,10 +363,11 @@ export async function mountAysw(player: PlayerAdapter): Promise<AyswModule> {
           clientTimeUtc: new Date().toISOString(),
           reason: "user_clicked_continue",
           itemId: player.getCurrentItem()?.id,
-          clientType: "web"
+          clientType: "web",
+          deviceId: resolveDeviceId()
         };
         try {
-          await api.sendAck(sessionId, ack);
+          await api.sendAck(resolveSessionId(), ack);
           if (hudSnapshot) {
             hudSnapshot.lastAck.status = "ok";
             hudSnapshot.lastAck.atTs = Date.now();
@@ -400,10 +414,11 @@ export async function mountAysw(player: PlayerAdapter): Promise<AyswModule> {
           clientTimeUtc: new Date().toISOString(),
           reason: "timeout_or_user_stop",
           itemId: player.getCurrentItem()?.id,
-          clientType: "web"
+          clientType: "web",
+          deviceId: resolveDeviceId()
         };
         try {
-          await api.sendAck(sessionId, ack);
+          await api.sendAck(resolveSessionId(), ack);
           if (hudSnapshot) {
             hudSnapshot.lastAck.status = "ok";
             hudSnapshot.lastAck.atTs = Date.now();

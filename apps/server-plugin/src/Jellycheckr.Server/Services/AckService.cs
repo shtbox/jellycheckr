@@ -9,7 +9,7 @@ public interface IAckService
 {
     AckResponse HandleAck(string sessionId, AckRequest request, EffectiveConfigResponse config);
     InteractionResponse HandleInteraction(string sessionId, InteractionRequest request);
-    void MarkPromptActive(string sessionId, DateTimeOffset promptDeadlineUtc);
+    void MarkPromptActive(string sessionId, DateTimeOffset promptDeadlineUtc, string? clientType);
 }
 
 public sealed class AckService : IAckService
@@ -74,6 +74,7 @@ public sealed class AckService : IAckService
             }
 
             state.LastItemId = request.ItemId;
+            RefreshWebUiRegistrationLeaseIfApplicable(state, request.ClientType, now);
 
             _logger.LogJellycheckrInformation(
                 "[Jellycheckr] AYSW ack: session={SessionId} ackType={AckType} reason={Reason} reset={ResetApplied}",
@@ -135,6 +136,7 @@ public sealed class AckService : IAckService
             var stateBefore = SnapshotState(state);
             state.LastInteractionUtc = now;
             state.LastItemId = request.ItemId ?? state.LastItemId;
+            RefreshWebUiRegistrationLeaseIfApplicable(state, request.ClientType, now);
 
             _logger.LogJellycheckrTrace(
                 "Interaction processed session={SessionId} request={@Request} nowUtc={NowUtc} stateBefore={@StateBefore} stateAfter={@StateAfter}",
@@ -162,7 +164,7 @@ public sealed class AckService : IAckService
         }
     }
 
-    public void MarkPromptActive(string sessionId, DateTimeOffset promptDeadlineUtc)
+    public void MarkPromptActive(string sessionId, DateTimeOffset promptDeadlineUtc, string? clientType)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
         {
@@ -178,10 +180,12 @@ public sealed class AckService : IAckService
 
         try
         {
+            var now = _clock.UtcNow;
             var state = _sessionStateStore.GetOrCreate(sessionId);
             var stateBefore = SnapshotState(state);
             state.PromptActive = true;
             state.PromptDeadlineUtc = promptDeadlineUtc;
+            RefreshWebUiRegistrationLeaseIfApplicable(state, clientType, now);
             _logger.LogJellycheckrInformation(
                 "[Jellycheckr] Prompt marked active for session={SessionId} deadlineUtc={PromptDeadlineUtc}.",
                 sessionId,
@@ -202,6 +206,16 @@ public sealed class AckService : IAckService
             _logger.LogJellycheckrError(ex, "[Jellycheckr] Unhandled error while marking prompt active for session={SessionId}.", sessionId);
             throw;
         }
+    }
+
+    private static void RefreshWebUiRegistrationLeaseIfApplicable(SessionState state, string? clientType, DateTimeOffset nowUtc)
+    {
+        if (!string.Equals(clientType, "web", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        WebUiRegistrationLeasePolicy.ApplyRegistration(state, nowUtc);
     }
 
     private static object SnapshotState(SessionState state)
@@ -240,7 +254,9 @@ public sealed class AckService : IAckService
             state.LastFallbackAction,
             state.LastFallbackActionResult,
             state.LastFallbackDecisionKey,
-            state.LastFallbackDecisionLoggedUtc
+            state.LastFallbackDecisionLoggedUtc,
+            state.WebUiRegistered,
+            state.WebUiRegistrationLeaseUtc
         };
     }
 }

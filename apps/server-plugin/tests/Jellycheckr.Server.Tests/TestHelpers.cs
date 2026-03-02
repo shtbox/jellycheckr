@@ -57,7 +57,14 @@ internal sealed class StubConfigService : IConfigService
 
 internal sealed class StubSessionSnapshotProvider : IServerFallbackSessionSnapshotProvider
 {
-    public IReadOnlyList<ServerObservedSessionSnapshot> GetCurrentSessions() => Array.Empty<ServerObservedSessionSnapshot>();
+    public StubSessionSnapshotProvider(IReadOnlyList<ServerObservedSessionSnapshot>? currentSessions = null)
+    {
+        CurrentSessions = currentSessions ?? Array.Empty<ServerObservedSessionSnapshot>();
+    }
+
+    public IReadOnlyList<ServerObservedSessionSnapshot> CurrentSessions { get; set; }
+
+    public IReadOnlyList<ServerObservedSessionSnapshot> GetCurrentSessions() => CurrentSessions;
 }
 
 internal sealed class StubJellyfinSessionCommandDispatcher : IJellyfinSessionCommandDispatcher

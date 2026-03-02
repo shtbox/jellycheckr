@@ -77,3 +77,37 @@ public sealed record PromptShownRequest
     public string? ClientType { get; set; }
     public string? DeviceId { get; set; }
 }
+
+public sealed record WebClientRegisterRequest
+{
+    public string DeviceId { get; set; } = string.Empty;
+}
+
+public sealed record WebClientRegisterResponse
+{
+    public bool Registered { get; set; }
+    public string? Reason { get; set; }
+    public string? SessionId { get; set; }
+    public DateTimeOffset? LeaseExpiresUtc { get; set; }
+    public EffectiveConfigResponse? Config { get; set; }
+}
+
+public sealed record WebClientHeartbeatRequest
+{
+    public string DeviceId { get; set; } = string.Empty;
+    public string? SessionId { get; set; }
+}
+
+public sealed record WebClientHeartbeatResponse
+{
+    public bool Accepted { get; set; }
+    public string? Reason { get; set; }
+    public string? SessionId { get; set; }
+    public DateTimeOffset? LeaseExpiresUtc { get; set; }
+}
+
+public sealed record WebClientUnregisterRequest
+{
+    public string? SessionId { get; set; }
+    public string? DeviceId { get; set; }
+}
