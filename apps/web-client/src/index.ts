@@ -28,6 +28,7 @@ let activeVideo: HTMLVideoElement | null = null;
 let activeModule: AyswModule | null = null;
 let activeSessionId: string | null = null;
 let activeDeviceId: string | null = null;
+let activeBootstrap: WebClientBootstrapContext | null = null;
 let mountInFlight = false;
 let scheduledCheck = false;
 let pendingRetryTimerId: number | null = null;
@@ -179,13 +180,12 @@ async function ensureAutoMounted(reason: string): Promise<void> {
   const video = findBestVideoElement();
 
   if (!video) {
-    if (activeModule || activeSessionId || activeDeviceId) {
+    if (activeModule) {
       debug("Disposing AYSW module because no compatible video element remains", { reason });
-      await disposeActiveModule("video-missing");
+      await disposeActiveModule("video-missing", false);
     }
 
     bootstrapState = "waiting_for_host";
-    resetRegisterBackoff();
     debug("No video element found during auto-mount check", { reason });
     return;
   }
@@ -207,7 +207,7 @@ async function ensureAutoMounted(reason: string): Promise<void> {
 
   if (activeModule && activeVideo && activeVideo !== video) {
     debug("Disposing AYSW module before mounting on a new video element");
-    await disposeActiveModule("video-changed");
+    await disposeActiveModule("video-changed", false);
   }
 
   const hostContext = resolveHostContext();
@@ -221,14 +221,25 @@ async function ensureAutoMounted(reason: string): Promise<void> {
 
   mountInFlight = true;
   try {
-    bootstrapState = "resolving_session";
-    const registration = await registerCurrentSession(hostContext, reason);
-    if (!registration) {
-      return;
+    let registration: { sessionId: string; bootstrap: WebClientBootstrapContext } | null = null;
+    if (hasReusableRegistrationContext(hostContext)) {
+      bootstrapState = "registered";
+      registration = {
+        sessionId: activeSessionId!,
+        bootstrap: activeBootstrap!
+      };
+    } else {
+      bootstrapState = "resolving_session";
+      registration = await registerCurrentSession(hostContext, reason);
+      if (!registration) {
+        return;
+      }
+
+      activeSessionId = registration.sessionId;
+      activeDeviceId = hostContext.deviceId;
+      activeBootstrap = registration.bootstrap;
     }
 
-    activeSessionId = registration.sessionId;
-    activeDeviceId = hostContext.deviceId;
     bootstrapState = "registered";
 
     debug("Attempting automatic mount", { reason, sessionId: activeSessionId, deviceId: activeDeviceId });
@@ -240,8 +251,9 @@ async function ensureAutoMounted(reason: string): Promise<void> {
     startHeartbeatLoop();
     debug("Automatic mount completed", { reason, sessionId: activeSessionId });
   } catch (err) {
-    await unregisterActiveSession("mount_failed");
-    bootstrapState = "waiting_for_host";
+    activeModule = null;
+    activeVideo = null;
+    bootstrapState = hasActiveRegistrationContext() ? "registered" : "waiting_for_host";
     warn("Automatic mount failed after session registration; continuing without Jellycheckr UI", err);
     scheduleAutoMountCheck("mount_failed", HARD_MOUNT_RETRY_MS);
   } finally {
@@ -362,7 +374,7 @@ async function sendHeartbeat(): Promise<void> {
   }
 }
 
-async function disposeActiveModule(reason = "dispose"): Promise<void> {
+async function disposeActiveModule(reason = "dispose", unregisterSession = true): Promise<void> {
   stopHeartbeatLoop();
 
   try {
@@ -374,8 +386,13 @@ async function disposeActiveModule(reason = "dispose"): Promise<void> {
     activeVideo = null;
   }
 
-  await unregisterActiveSession(reason);
-  bootstrapState = "waiting_for_host";
+  if (unregisterSession) {
+    await unregisterActiveSession(reason);
+    bootstrapState = "waiting_for_host";
+    return;
+  }
+
+  bootstrapState = hasActiveRegistrationContext() ? "registered" : "waiting_for_host";
 }
 
 async function unregisterActiveSession(reason: string): Promise<void> {
@@ -384,6 +401,7 @@ async function unregisterActiveSession(reason: string): Promise<void> {
 
   activeSessionId = null;
   activeDeviceId = null;
+  activeBootstrap = null;
 
   if (!sessionId && !deviceId) {
     return;
@@ -476,6 +494,14 @@ function createDomPlayerAdapter(video: HTMLVideoElement): PlayerAdapter {
 
 function getCurrentHostDeviceId(): string | null {
   return window.ApiClient?.deviceId?.() ?? null;
+}
+
+function hasActiveRegistrationContext(): boolean {
+  return !!activeSessionId && !!activeDeviceId && !!activeBootstrap;
+}
+
+function hasReusableRegistrationContext(hostContext: HostContext): boolean {
+  return hasActiveRegistrationContext() && activeDeviceId === hostContext.deviceId;
 }
 
 function tryExitPlaybackView(): void {
