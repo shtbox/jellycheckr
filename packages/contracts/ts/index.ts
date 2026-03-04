@@ -57,3 +57,32 @@ export interface PromptShownRequest {
   clientType?: string;
   deviceId?: string;
 }
+
+export interface WebClientRegisterRequest {
+  deviceId: string;
+}
+
+export interface WebClientRegisterResponse {
+  registered: boolean;
+  reason?: string | null;
+  sessionId?: string | null;
+  leaseExpiresUtc?: string | null;
+  config?: EffectiveConfigResponse | null;
+}
+
+export interface WebClientHeartbeatRequest {
+  deviceId: string;
+  sessionId?: string;
+}
+
+export interface WebClientHeartbeatResponse {
+  accepted: boolean;
+  reason?: string | null;
+  sessionId?: string | null;
+  leaseExpiresUtc?: string | null;
+}
+
+export interface WebClientUnregisterRequest {
+  sessionId?: string;
+  deviceId?: string;
+}

@@ -81,9 +81,7 @@ public sealed class ServerFallbackDecisionEngine : IServerFallbackDecisionEngine
                 0);
         }
 
-        var activityAnchor = state.LastInferredActivityUtc != DateTimeOffset.MinValue
-            ? state.LastInferredActivityUtc
-            : (state.LastSeenUtc != DateTimeOffset.MinValue ? state.LastSeenUtc : nowUtc);
+        var activityAnchor = ResolveActivityAnchor(state, nowUtc);
         var inactivityMinutes = Math.Max(0, (nowUtc - activityAnchor).TotalMinutes);
         if (inactivityMinutes < config.ServerFallbackInactivityMinutes)
         {
@@ -96,6 +94,27 @@ public sealed class ServerFallbackDecisionEngine : IServerFallbackDecisionEngine
 
         var reason = $"threshold=or inactivity={inactivityMinutes:F1}m";
         return new ServerFallbackDecision(true, reason, minutesPlayed, state.ServerFallbackEpisodeTransitionsSinceReset, inactivityMinutes);
+    }
+
+    private static DateTimeOffset ResolveActivityAnchor(SessionState state, DateTimeOffset nowUtc)
+    {
+        var lastInteractionUtc = state.LastInteractionUtc > DateTimeOffset.MinValue
+            ? state.LastInteractionUtc
+            : DateTimeOffset.MinValue;
+        var lastInferredActivityUtc = state.LastInferredActivityUtc > DateTimeOffset.MinValue
+            ? state.LastInferredActivityUtc
+            : DateTimeOffset.MinValue;
+
+        if (lastInteractionUtc > DateTimeOffset.MinValue || lastInferredActivityUtc > DateTimeOffset.MinValue)
+        {
+            return lastInteractionUtc >= lastInferredActivityUtc
+                ? lastInteractionUtc
+                : lastInferredActivityUtc;
+        }
+
+        return state.LastSeenUtc != DateTimeOffset.MinValue
+            ? state.LastSeenUtc
+            : nowUtc;
     }
 }
 

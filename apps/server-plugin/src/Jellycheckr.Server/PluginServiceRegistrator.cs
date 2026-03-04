@@ -19,9 +19,12 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IClock, SystemClock>();
         serviceCollection.AddSingleton<IConfigService, ConfigService>();
         serviceCollection.AddSingleton<ISessionStateStore, SessionStateStore>();
+        serviceCollection.AddSingleton<ISessionStateObserver, SessionStateObserver>();
         serviceCollection.AddSingleton<IAckService, AckService>();
         serviceCollection.AddSingleton<IServerFallbackDecisionEngine, ServerFallbackDecisionEngine>();
         serviceCollection.AddSingleton<IServerFallbackSessionSnapshotProvider, ServerFallbackSessionSnapshotProvider>();
+        serviceCollection.AddSingleton<IWebClientSessionResolver, WebClientSessionResolver>();
+        serviceCollection.AddSingleton<IWebClientRegistrationService, WebClientRegistrationService>();
         serviceCollection.AddSingleton<IJellyfinSessionCommandDispatcher, JellyfinSessionCommandDispatcher>();
         serviceCollection.AddSingleton<IWebUiInjectionState, WebUiInjectionState>();
         serviceCollection.AddHostedService<WebUiInjectionRegistrationService>();

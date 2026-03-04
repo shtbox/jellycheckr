@@ -20,6 +20,7 @@ import { PromptTimingSection } from './sections/PromptTimingSection';
 
 export function App() {
   const c = config.value;
+  const canSubmit = dirty.value && !saving.value && !loading.value;
   const noteTone = statusTone.value === 'neutral' ? (dirty.value ? 'warn' : 'ok') : statusTone.value;
   const showFallbackFields = c.EnableServerFallback;
   const checksSummary = [
@@ -88,10 +89,10 @@ export function App() {
               </div>
               <button
                 type="submit"
-                class="emby-button button-submit raised rounded-full border border-[#67d8bf]/70 bg-[linear-gradient(180deg,rgba(103,216,191,0.34),rgba(103,216,191,0.22))] px-4 py-2 font-extrabold tracking-[0.02em] text-[#eafff9] transition hover:-translate-y-px hover:brightness-105 disabled:cursor-default disabled:opacity-60 disabled:transform-none"
-                disabled={saving.value || loading.value}
+                class="emby-button button-submit raised rounded-full border border-[#97f3e1]/80 bg-[linear-gradient(180deg,#9ef6e5,#6fd9c3)] px-4 py-2 font-black tracking-[0.02em] text-[#0b2c26] shadow-[0_10px_24px_rgba(3,19,17,0.28),inset_0_1px_0_rgba(255,255,255,0.32)] transition hover:-translate-y-px hover:brightness-[1.02] hover:shadow-[0_14px_28px_rgba(3,19,17,0.34),inset_0_1px_0_rgba(255,255,255,0.38)] disabled:cursor-default disabled:border-[#4e7c73]/85 disabled:bg-[linear-gradient(180deg,rgba(77,117,108,0.92),rgba(56,88,81,0.92))] disabled:text-[#edf7f4] disabled:opacity-100 disabled:transform-none disabled:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                disabled={!canSubmit}
               >
-                <span>{saving.value ? 'Saving...' : dirty.value ? 'Save Changes' : 'Save'}</span>
+                <span>{saving.value ? 'Saving...' : loading.value ? 'Loading...' : dirty.value ? 'Save Changes' : 'Saved'}</span>
               </button>
             </div>
           </form>

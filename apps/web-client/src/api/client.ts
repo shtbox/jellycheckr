@@ -2,6 +2,11 @@ import type {
   AckRequest,
   AckResponse,
   EffectiveConfigResponse,
+  WebClientHeartbeatRequest,
+  WebClientHeartbeatResponse,
+  WebClientRegisterRequest,
+  WebClientRegisterResponse,
+  WebClientUnregisterRequest,
   PromptShownRequest,
   InteractionRequest,
   InteractionResponse
@@ -10,6 +15,9 @@ import { debug } from "../logging/logger";
 
 export interface ApiClient {
   getEffectiveConfig(): Promise<EffectiveConfigResponse>;
+  registerWebClient(body: WebClientRegisterRequest): Promise<WebClientRegisterResponse>;
+  heartbeatWebClient(body: WebClientHeartbeatRequest): Promise<WebClientHeartbeatResponse>;
+  unregisterWebClient(body: WebClientUnregisterRequest): Promise<void>;
   sendAck(sessionId: string, body: AckRequest): Promise<AckResponse>;
   sendInteraction(sessionId: string, body: InteractionRequest): Promise<InteractionResponse>;
   sendPromptShown(sessionId: string, body: PromptShownRequest): Promise<void>;
@@ -20,6 +28,31 @@ export class HttpApiClient implements ApiClient {
 
   async getEffectiveConfig(): Promise<EffectiveConfigResponse> {
     return this.request<EffectiveConfigResponse>(`${this.basePath}/config`, { method: "GET" });
+  }
+
+  async registerWebClient(body: WebClientRegisterRequest): Promise<WebClientRegisterResponse> {
+    return this.request<WebClientRegisterResponse>(`${this.basePath}/web-client/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+  }
+
+  async heartbeatWebClient(body: WebClientHeartbeatRequest): Promise<WebClientHeartbeatResponse> {
+    return this.request<WebClientHeartbeatResponse>(`${this.basePath}/web-client/heartbeat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+  }
+
+  async unregisterWebClient(body: WebClientUnregisterRequest): Promise<void> {
+    await this.request<void>(`${this.basePath}/web-client/unregister`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      keepalive: true
+    });
   }
 
   async sendAck(sessionId: string, body: AckRequest): Promise<AckResponse> {

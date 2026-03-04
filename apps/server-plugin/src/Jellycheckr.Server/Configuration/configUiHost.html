@@ -9,12 +9,15 @@
         html, body {
             margin: 0;
             padding: 0;
+            min-height: 100%;
             background: transparent;
             color: #e5e5e5;
             font-family: "Segoe UI", Tahoma, sans-serif;
+            overflow-x: hidden;
         }
 
         #jellycheckr-config-app {
+            min-height: 100%;
             padding: 0.25rem 0 1rem;
         }
 
@@ -36,6 +39,61 @@
     <script src="jellycheckr-config-ui.js"></script>
     <script>
         (function () {
+            function syncFrameHeight() {
+                try {
+                    var frame = window.frameElement;
+                    if (!frame) {
+                        return;
+                    }
+
+                    var root = document.getElementById('jellycheckr-config-app');
+                    var body = document.body;
+                    var docEl = document.documentElement;
+                    var nextHeight = Math.max(
+                        window.innerHeight || 0,
+                        root ? root.scrollHeight : 0,
+                        body ? body.scrollHeight : 0,
+                        body ? body.offsetHeight : 0,
+                        docEl ? docEl.scrollHeight : 0,
+                        docEl ? docEl.offsetHeight : 0,
+                        docEl ? docEl.clientHeight : 0
+                    );
+
+                    frame.style.height = nextHeight + 'px';
+                    frame.style.display = 'block';
+                } catch (ex) {
+                    // Ignore iframe resize failures.
+                }
+            }
+
+            function scheduleFrameHeightSync() {
+                if (window.requestAnimationFrame) {
+                    window.requestAnimationFrame(syncFrameHeight);
+                    return;
+                }
+
+                window.setTimeout(syncFrameHeight, 0);
+            }
+
+            if (typeof ResizeObserver === 'function') {
+                var rootObserver = new ResizeObserver(function () {
+                    scheduleFrameHeightSync();
+                });
+
+                if (document.documentElement) {
+                    rootObserver.observe(document.documentElement);
+                }
+
+                var appRoot = document.getElementById('jellycheckr-config-app');
+                if (appRoot) {
+                    rootObserver.observe(appRoot);
+                }
+            }
+
+            window.addEventListener('load', scheduleFrameHeightSync);
+            window.addEventListener('resize', scheduleFrameHeightSync);
+            scheduleFrameHeightSync();
+
             try {
                 if (window.parent && window.parent !== window && window.parent.getComputedStyle) {
                     var parentBody = window.parent.document && window.parent.document.body;
@@ -58,17 +116,20 @@
             if (window.JellycheckrConfigAdmin && typeof window.JellycheckrConfigAdmin.bind === 'function') {
                 try {
                     window.JellycheckrConfigAdmin.bind();
+                    scheduleFrameHeightSync();
                     return;
                 } catch (ex) {
                     var msg = (ex && ex.message) ? ex.message : String(ex);
                     document.getElementById('jellycheckr-config-app').innerHTML =
                         '<div class="jc-hostFallback">Config UI bootstrap failed: ' + msg + '</div>';
+                    scheduleFrameHeightSync();
                     return;
                 }
             }
 
             document.getElementById('jellycheckr-config-app').innerHTML =
                 '<div class="jc-hostFallback">Config UI bundle loaded but did not register bootstrap.</div>';
+            scheduleFrameHeightSync();
         })();
     </script>
 </body>

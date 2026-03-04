@@ -119,7 +119,7 @@ public sealed class AyswController : ControllerBase
                 request,
                 effectiveTimeout,
                 deadline);
-            _ackService.MarkPromptActive(sessionId, deadline);
+            _ackService.MarkPromptActive(sessionId, deadline, request.ClientType);
             _logger.LogJellycheckrInformation(
                 "[Jellycheckr] Prompt decision session={SessionId} action=popup_shown itemId={ItemId} timeoutSeconds={TimeoutSeconds} deadlineUtc={DeadlineUtc}.",
                 sessionId,

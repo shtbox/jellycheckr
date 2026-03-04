@@ -37,19 +37,113 @@ public static class JellycheckrWebIndexTransform
         return $@"
 <script id=""jellycheckr-web-loader"">
 (function() {{
-  if (document.getElementById('jellycheckr-web-client-script')) return;
-  var path = window.location.pathname || '/';
-  var lowerPath = path.toLowerCase();
-  var webIndex = lowerPath.indexOf('/web/');
-  var rootPrefix = webIndex >= 0 ? path.slice(0, webIndex + 1) : '/';
-  if (!rootPrefix) rootPrefix = '/';
-  if (rootPrefix.charAt(rootPrefix.length - 1) !== '/') rootPrefix += '/';
-  var src = rootPrefix + '{relativeUrl}';
-  var script = document.createElement('script');
-  script.id = 'jellycheckr-web-client-script';
-  script.src = src;
-  script.defer = true;
-  document.head.appendChild(script);
+  if (window.__jellycheckrWebLoaderInitialized) {{
+    if (window.JellycheckrAysw && typeof window.JellycheckrAysw.remountNow === 'function') {{
+      window.JellycheckrAysw.remountNow();
+    }}
+    return;
+  }}
+
+  window.__jellycheckrWebLoaderInitialized = true;
+
+  var retryDelays = [1000, 3000, 10000, 30000];
+  var failureCount = 0;
+  var retryTimerId = 0;
+  var scriptId = 'jellycheckr-web-client-script';
+
+  function resolveRootPrefix() {{
+    var path = window.location.pathname || '/';
+    var lowerPath = path.toLowerCase();
+    var webIndex = lowerPath.indexOf('/web/');
+    var rootPrefix = webIndex >= 0 ? path.slice(0, webIndex + 1) : '/';
+    if (!rootPrefix) rootPrefix = '/';
+    if (rootPrefix.charAt(rootPrefix.length - 1) !== '/') rootPrefix += '/';
+    return rootPrefix;
+  }}
+
+  function resolveScriptSrc() {{
+    return resolveRootPrefix() + '{relativeUrl}';
+  }}
+
+  function clearRetry() {{
+    if (!retryTimerId) return;
+    window.clearTimeout(retryTimerId);
+    retryTimerId = 0;
+  }}
+
+  function scheduleRetry() {{
+    if (retryTimerId) return;
+    var retryIndex = Math.min(Math.max(failureCount - 1, 0), retryDelays.length - 1);
+    var delay = retryDelays[retryIndex];
+    retryTimerId = window.setTimeout(function() {{
+      retryTimerId = 0;
+      ensureRuntime('retry');
+    }}, delay);
+  }}
+
+  function notifyRuntimeLoaded() {{
+    clearRetry();
+    failureCount = 0;
+    if (window.JellycheckrAysw && typeof window.JellycheckrAysw.remountNow === 'function') {{
+      window.JellycheckrAysw.remountNow();
+    }}
+  }}
+
+  function ensureRuntime(reason) {{
+    if (window.JellycheckrAysw) {{
+      notifyRuntimeLoaded();
+      return;
+    }}
+
+    var existing = document.getElementById(scriptId);
+    if (existing && existing.getAttribute('data-jellycheckr-state') === 'loading') {{
+      return;
+    }}
+
+    if (existing && existing.parentNode) {{
+      existing.parentNode.removeChild(existing);
+    }}
+
+    var script = document.createElement('script');
+    script.id = scriptId;
+    script.src = resolveScriptSrc();
+    script.async = true;
+    script.setAttribute('data-jellycheckr-state', 'loading');
+    script.addEventListener('load', function() {{
+      script.setAttribute('data-jellycheckr-state', 'loaded');
+      if (window.JellycheckrAysw) {{
+        notifyRuntimeLoaded();
+        return;
+      }}
+
+      failureCount += 1;
+      scheduleRetry();
+    }});
+    script.addEventListener('error', function() {{
+      script.setAttribute('data-jellycheckr-state', 'error');
+      failureCount += 1;
+      scheduleRetry();
+    }});
+
+    var parent = document.head || document.documentElement || document.body;
+    if (!parent) {{
+      failureCount += 1;
+      scheduleRetry();
+      return;
+    }}
+
+    parent.appendChild(script);
+  }}
+
+  window.addEventListener('pageshow', function() {{ ensureRuntime('pageshow'); }});
+  document.addEventListener('visibilitychange', function() {{
+    if (document.visibilityState === 'visible') {{
+      ensureRuntime('visibilitychange');
+    }}
+  }});
+  window.setInterval(function() {{ ensureRuntime('interval'); }}, 30000);
+
+  ensureRuntime('initial');
 }})();
 </script>
 ";
