@@ -2,439 +2,186 @@
 
 # Jellycheckr
 
-`jellycheckr` is a monorepo for an "Are You Still Watching?" feature focused on:
+Jellycheckr is an "Are You Still Watching?" plugin for Jellyfin. It is built for admins who want a more deliberate playback experience: less unattended autoplay, a clearer check-in point for long binge sessions, and a fallback path for clients that cannot render a web prompt.
 
-- Jellyfin server plugin (`apps/server-plugin`)
-- Jellyfin Web client module (`apps/web-client`)
-- Plugin configuration UI (`apps/config-ui`)
+- Shows an interactive "Are You Still Watching?" prompt in Jellyfin Web.
+- Lets you trigger the check-in by episode count, a time threshold, or both.
+- Stops playback automatically if the viewer ignores the countdown.
+- Uses server-side fallback actions for native clients that cannot show the modal.
+- Includes a built-in configuration page inside the Jellyfin dashboard.
+
+## Screenshots
+
+### Built-In Configuration UI
+
+The plugin ships with its own dashboard configuration page, so you can tune prompt timing and native-client fallback behavior without editing files.
+
+<img width="1289" height="1300" alt="Jellycheckr configuration UI" src="https://github.com/user-attachments/assets/bcbce084-8062-4727-9848-9d9147dd9540" />
+
+### Developer HUD (Testing Only)
+
+If you enable developer mode, Jellycheckr can show a debug HUD to help validate timing, trigger decisions, and prompt flow during testing.
+
+<img width="1971" height="1109" alt="Jellycheckr developer HUD" src="https://github.com/user-attachments/assets/e3514841-02eb-4cd4-8269-0debb6aa603c" />
+
+## Why It Exists
+
+Jellyfin does not ship with a built-in Netflix-style autoplay check-in flow. Jellycheckr adds one without forcing a single behavior across every client type.
+
+- Web playback can present a blocking prompt with a clear continue-or-stop choice.
+- Native clients can still be handled through server-observed playback and pause/stop commands.
+- Admins can tune the timing to match how aggressively or gently they want playback managed.
+
+## How It Works
+
+### Jellyfin Web
+
+When Jellycheckr is active in Jellyfin Web, it can show a blocking prompt with a countdown when a configured threshold is reached.
+
+- The viewer can choose to continue watching.
+- The viewer can choose to stop playback.
+- If the countdown expires, Jellycheckr stops playback automatically.
+
+### Native And Non-Web Clients
+
+Native clients do not render the Jellycheckr modal. When server-side fallback is enabled, Jellycheckr watches session activity from the server and uses Jellyfin pause/stop commands instead.
+
+- It can optionally send a client message first.
+- It can pause before stopping.
+- It can wait through a grace period before sending stop.
+
+### Trigger Behavior
+
+Jellycheckr uses shared trigger settings for both the web prompt and server fallback.
+
+- Episode threshold and timer threshold are both available.
+- If both checks are enabled, the first threshold reached triggers the prompt or fallback.
+- After a viewer chooses `Continue`, counters reset and the cooldown delays the next prompt.
+- Developer mode is available for fast testing, but it is not intended for normal usage.
 
 ## Installation
 
-1. Add `https://shtbox.io/jellycheckr/manifest.json` as a plugin source repository on your Jellyfin server.
-2. Find "Jellycheckr AYSW" in the list and install it. Configuration options are available in the plugin settings.
+1. In Jellyfin, open `Dashboard > Plugins > Repositories`.
+2. Add `https://shtbox.io/jellycheckr/manifest.json` as a custom plugin repository.
+3. Open `Catalog`, find `Jellycheckr AYSW`, and install it.
+4. Open the plugin configuration page from the dashboard to adjust the behavior.
 
-> [!NOTE]
-> This plugin relies on the Jellyfin File Transformation plugin for web clients if you want the "pretty" popup:
-> https://github.com/IAmParadox27/jellyfin-plugin-file-transformation/tree/main
-> When that plugin is missing, Jellycheckr falls back to server-side-only mode.
+> [!IMPORTANT]
+> If you want the interactive popup inside Jellyfin Web, install the Jellyfin File Transformation plugin as well.
+> Without it, the injected Jellyfin Web modal will not appear.
+> Jellycheckr can still operate in fallback-only mode for native clients when server fallback is enabled.
 
-## Repository Layout
+## Recommended First-Time Setup
 
-- `apps/server-plugin` - .NET Jellyfin plugin backend
-- `apps/web-client` - TypeScript web module for playback prompts
-- `apps/config-ui` - Preact + Tailwind configuration UI bundled into plugin web assets
-- `packages/contracts` - shared API and configuration contracts
-- `docs` - architecture, API, configuration, and developer notes
+Start simple and tune from real usage.
 
-## Local Build
+- Leave the feature enabled.
+- Keep both episode and timer checks on unless you specifically want only one trigger style.
+- Start with the defaults:
+  - `3` episodes
+  - `120` minutes
+  - `60` second prompt timeout
+  - `30` minute cooldown
+- Leave server-side fallback enabled if you want coverage on native clients such as Android TV or Firestick.
+- If you are testing native-client behavior, turn on fallback dry run first so you can confirm triggers without actually pausing or stopping playback.
 
-From the repo root:
+## Configuration Guide
 
-- Build the plugin:
-  - `dotnet build apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.csproj`
-- Publish the plugin (`net8.0`) and create a local zip:
-  - `dotnet publish apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.csproj -c Release -f net8.0`
-- Local zip output:
-  - `apps/server-plugin/artifacts/Jellycheckr_0.1.0.zip`
+### Feature Toggles
 
-The packaged zip includes:
+These decide which parts of Jellycheckr are active.
 
-- `meta.json`
-- plugin assemblies
-- bundled plugin `web/` assets
+- `Feature enabled`: Master switch for all prompt and fallback behavior.
+- `Enable server-side fallback`: Lets Jellycheckr manage native clients that cannot show the web prompt.
+- `Enable episode checking`: Triggers after a configured number of consecutive episode transitions.
+- `Enable timer checking`: Triggers based on the shared time threshold used by Jellycheckr.
 
-## Versioning
+### Prompt Timing
 
-- `0.1.0` is the no-tag baseline only until the first stable semver tag exists.
-- After the first stable tag, Git tags are the source of truth for releases.
-- Stable package versions are `x.y.z`.
-- Stable `meta.json.version` values are also `x.y.z`.
-- Prerelease package versions are `x.y.z-beta.N` or `x.y.z-rc.N`.
-- Prerelease `meta.json.version` values stay Jellyfin-compatible by using `x.y.z.C`, where `C` is a shared numeric prerelease counter.
-- `meta.json.packageVersion` always stores the exact package version, including prerelease suffixes.
+These control when Jellycheckr steps in and how long the viewer has to respond.
 
-## GitHub Release Process
+- `Episode threshold`: How many consecutive episodes can play before prompting.
+- `Timer threshold`: The shared time threshold used by the web prompt and native fallback logic.
+- `Interaction quiet window`: How long Jellycheckr treats the session as inactive before counting it as no interaction.
+- `Prompt timeout`: How long the viewer has before the prompt times out.
+- `Cooldown`: How long Jellycheckr waits after `Continue` before it can prompt again.
 
-### Why this is tag-based
+The current default behavior is:
 
-This repository uses pipeline-injected versioning and tag-based releases so that:
+- Episode threshold: `3`
+- Timer threshold: `120` minutes
+- Interaction quiet window: `45` seconds
+- Prompt timeout: `60` seconds
+- Cooldown: `30` minutes
 
-- there are no version bump commits
-- `main` stays clean after squash merges
-- tags and GitHub Releases are only created after a verified package already exists
+### Native-Client Fallback
 
-### Branch protection and repository settings
+These settings control what Jellycheckr does on clients that cannot render the modal.
 
-Recommended GitHub settings for `main`:
+- `Fallback inactivity threshold`: Requires a period of inactivity before fallback can trigger.
+- `Pause before stop`: Pauses first, then stops later if the session does not recover.
+- `Pause grace period`: How long to wait after pause before sending stop.
+- `Send message before pause`: Attempts to send a Jellyfin client message before pausing.
+- `Fallback client message`: The message text to send when messaging is enabled.
+- `Fallback dry run`: Logs the trigger path without sending pause or stop commands.
 
-1. Require pull requests before merging.
-2. Require status checks to pass before merging.
-3. Mark `PR Validation / validate` as a required check.
-4. Use squash merges so the PR title is the release decision source of truth.
-5. Restrict direct pushes to `main`.
-6. Allow GitHub Actions to create and approve pull requests if your org policy requires it.
-7. Ensure `GITHUB_TOKEN` has write permission for workflow jobs that create tags and releases.
+### Developer Tools
 
-Release and prerelease publishing rely on GitHub Actions permissions:
+These are for testing only.
 
-- `pull-requests: read` for push-triggered workflows that resolve merged PR metadata (title, labels, and body) from a squash merge commit
-- `contents: write` for tag and GitHub Release creation
-- `issues: write` and `pull-requests: write` for the PR Release Preview comment
-- if repository policy keeps `GITHUB_TOKEN` read-only for the current context, the Release Preview workflow falls back to the job summary instead of posting a PR comment
+- `Developer mode`: Fast-cycle trigger mode for validation, not normal playback use.
+- `Developer prompt after`: A short test timer used only while developer mode is enabled.
 
-### Conventional Commit PR titles
+For normal use, leave developer mode off.
 
-PR titles must match:
+## Compatibility And Limitations
 
-- `^[A-Za-z][A-Za-z0-9-]*(\([^)]+\))?(!)?: .+`
-
-This follows the Conventional Commits structure `type(scope)!: description`:
-
-- types are case-insensitive
-- custom types are allowed
-- the `: ` separator is required
-
-Valid examples:
-
-- `feat(ui): add setting`
-- `build: initial pipeline implementation`
-- `build(pipeline): Adding Pipeline`
-- `fix(api): avoid null response`
-- `feat!: remove legacy config`
-- `docs(readme): update install notes`
-- `ci(actions): tighten release permissions`
-
-Release mapping:
-
-- any valid Conventional Commit type is accepted
-- `feat` => minor
-- `fix`, `perf` => patch
-- `!`, `BREAKING CHANGE:`, or `BREAKING-CHANGE:` => major
-- all other valid types => no release by default unless a release override label is applied
-
-### Release labels
-
-Supported labels:
-
-- `release:skip` - force no release
-- `release:major` - force a major release
-- `release:minor` - force a minor release
-- `release:patch` - force a patch release
-- `release:beta` - opt in to prerelease publishing on the PR
-- `release:rc` - opt in to prerelease publishing on the PR
-
-Precedence:
-
-1. `release:skip` overrides everything.
-2. `release:major`, `release:minor`, and `release:patch` override the title-derived bump.
-3. `release:beta` and `release:rc` only affect prerelease output. They do not change the stable release that is produced after merge.
-
-### PR workflows
-
-#### PR Validation
-
-Runs on every pull request and is the required merge gate.
-
-It performs:
-
-- PR title validation
-- `dotnet restore`
-- `dotnet build`
-- `dotnet test`
-- a `dotnet publish` dry run without a release zip
-
-#### Release Preview
-
-Runs on pull requests targeting `main`.
-
-It shows:
-
-- computed release type (`major`, `minor`, `patch`, or `none`)
-- next stable version
-- next stable manifest version
-- whether merge would produce a stable release
-- the exact manifest-only GitHub Release body preview
-- the next prerelease candidate if a prerelease label is present
-- changelog preview since the last stable tag
-
-It updates a single PR comment and also writes the same preview into the workflow summary.
-
-How to read the preview:
-
-- `Next stable version` is the Git tag and zip version that will be used on merge.
-- `Next stable manifest version` is the value that will go into `meta.json.version`.
-- `Opt-in prerelease` shows the exact prerelease zip version and the numeric Jellyfin manifest version.
-- `Release Body Preview` shows the exact text that the GitHub Release body will contain.
-
-### Stable release flow
-
-Stable releases only happen after a merge to `main`.
-
-#### Stage A: Build and Verify
-
-`Enterprise Release - Stage A`:
-
-- computes the next stable version
-- restores, builds, tests, and publishes the plugin
-- validates the produced zip and `meta.json`
-- generates `release-notes.md`
-- uploads a release bundle artifact
-
-Stage A does not:
-
-- create a tag
-- create a GitHub Release
-
-If the release type resolves to `none`, Stage A exits successfully and skips publishing.
-
-#### Stage B: Release and Publish
-
-`Enterprise Release - Stage B` runs only after Stage A succeeds and only when a release is required.
-
-It:
-
-- downloads the verified bundle from Stage A
-- verifies the bundle contents again
-- creates or reuses the stable tag
-- creates or updates the GitHub Release
-- uploads the plugin zip asset
-- uploads a `<zip-name>.md5` sidecar checksum asset for the zip
-- uploads `release-notes.md` as a separate asset
-
-Stable artifacts appear in two places:
-
-- Stage A workflow artifact: internal verified bundle
-- GitHub Release assets: final published zip, `<zip-name>.md5`, and `release-notes.md`
-
-### Prerelease flow
-
-You can publish a prerelease in two ways:
-
-1. Add `release:beta` or `release:rc` to a PR targeting `main`.
-2. Run the `Prerelease Build` workflow manually with `workflow_dispatch`.
-
-Behavior:
-
-- PRs in the main repository can build and publish prereleases.
-- Fork PRs can build and validate a prerelease package, but publish is skipped.
-- Non-`main` branch pushes run a preview-only prerelease build using `beta` numbering and never publish.
-- Stable releases still happen only after merge to `main`.
-
-Prerelease artifacts appear in:
-
-- the `Prerelease Build` workflow artifact (when publish is allowed)
-- the GitHub prerelease assets, including the zip, `<zip-name>.md5`, and `release-notes.md`
-
-### Common release tasks
-
-Use these label combinations and workflow paths for the most common release scenarios.
-
-#### Publish a normal stable release from a PR to `main`
-
-1. Open a PR targeting `main`.
-2. Use a releasable Conventional Commit title:
-   - `feat(...)` for a minor release
-   - `fix(...)` or `perf(...)` for a patch release
-   - `...!:` or include `BREAKING CHANGE:` for a major release
-3. Do not add any override label unless you want to change the inferred bump.
-4. Merge with squash.
-
-Result:
-
-- `Release Preview` shows the computed stable version before merge
-- merge to `main` triggers `Enterprise Release - Stage A`
-- if Stage A succeeds, `Enterprise Release - Stage B` publishes the stable release
-
-#### Force a stable release when the PR title would normally produce no release
-
-Use this when the PR title is something like `build: ...`, `docs: ...`, `chore: ...`, or another valid type that maps to no release by default.
-
-Before merge:
-
-1. Add one of these labels to the PR:
-   - `release:patch`
-   - `release:minor`
-   - `release:major`
-2. Merge with squash.
-
-After merge (recovery path):
-
-1. Add one of the same override labels to the merged PR.
-2. Re-run the original `Enterprise Release - Stage A` workflow run for that merge commit.
-
-Result:
-
-- the override label becomes the release source of truth for the bump
-- Stage A computes the forced stable version and Stage B publishes it
-
-#### Prevent a release entirely
-
-1. Add `release:skip` to the PR.
-2. Merge normally if you still want the code on `main`.
-
-Result:
-
-- `Release Preview` shows no release
-- Stage A exits successfully without packaging or publishing
-- Stage B does not run
-
-#### Publish a prerelease from a PR targeting `main`
-
-1. Open a PR targeting `main`.
-2. Add one prerelease channel label:
-   - `release:beta`
-   - `release:rc`
-3. Make sure the PR also resolves to a release bump:
-   - use a releasable title (`feat`, `fix`, `perf`, breaking change), or
-   - add `release:patch`, `release:minor`, or `release:major`
-
-Result:
-
-- `Release Preview` shows the exact prerelease version and numeric manifest version
-- `Prerelease Build` packages and publishes the prerelease from the PR
-- the eventual stable release still waits for merge to `main`
-
-Examples:
-
-- `feat(api): add endpoint` + `release:beta` => publishes a beta prerelease
-- `build: initial pipeline implementation` + `release:patch` + `release:beta` => forces a patch prerelease
-
-#### Build a preview package from a non-`main` branch without publishing
-
-1. Push the branch.
-
-Result:
-
-- `Prerelease Build` runs automatically in preview mode
-- it computes a beta-style prerelease version
-- it builds, tests, packages, and validates the prerelease
-- it does **not** upload release assets
-- it does **not** create a tag
-- it does **not** create a GitHub Release
-
-This path is for validation only. No PR labels are required.
-
-#### Publish a prerelease from a non-`main` branch
-
-This is not done by branch push alone. Non-`main` pushes are preview-only.
-
-To actually publish:
-
-1. Go to `Actions` in GitHub.
-2. Run the `Prerelease Build` workflow manually (`workflow_dispatch`).
-3. Set:
-   - `ref` to the branch name or exact commit SHA
-   - `channel` to `beta` or `rc`
-   - `bump_override` to:
-     - `auto` if the branch head commit title already resolves to a release bump
-     - `patch`, `minor`, or `major` if you need to force the prerelease bump
-
-Result:
-
-- the workflow builds and validates the prerelease package from that branch
-- it creates or updates the prerelease tag and GitHub prerelease
-- it uploads the zip, `<zip-name>.md5`, and `release-notes.md`
-
-Example:
-
-- To publish a beta from `feature/new-ui` even if the latest commit is `build: adjust css`, run `Prerelease Build` manually with:
-  - `ref = feature/new-ui`
-  - `channel = beta`
-  - `bump_override = patch`
-
-### GitHub Release body format
-
-The GitHub Release body is intentionally not a changelog.
-
-It contains exactly one fenced `jellycheckr-manifest` block and nothing else:
-
-```jellycheckr-manifest
-{
-  "version": "<computed manifest version>",
-  "targetAbi": "<computed targetAbi>",
-  "dependencies": []
-}
-```
-
-Rules:
-
-- `version` is the actual Jellyfin manifest version from the packaged build
-- `targetAbi` is the actual packaged target ABI
-- `dependencies` is currently always `[]`
-- the changelog is shipped as `release-notes.md`, not in the Release body
-- the zip checksum is shipped as a sidecar `<zip-name>.md5` asset containing the MD5 hash and original zip filename
+- Jellycheckr currently targets Jellyfin `10.9.x`.
+- The interactive Jellyfin Web prompt depends on the Jellyfin File Transformation plugin being installed and available.
+- Native clients do not show the Jellycheckr modal. They rely on server fallback behavior instead.
+- Client messaging before pause is best-effort and may not behave the same across all clients.
+- This project is still in active development, so behavior and packaging may continue to change between releases.
 
 ## Troubleshooting
 
-### Invalid PR title
+### I Installed It But Do Not See The Popup In Jellyfin Web
 
-- Symptom: `PR Validation / validate` fails immediately.
-- Fix: rename the PR title to `type(scope)!: description` and keep the required `: ` separator.
+- Make sure the Jellyfin File Transformation plugin is installed.
+- Confirm Jellycheckr is enabled in its configuration page.
+- If needed, verify these plugin-served assets load successfully:
+  - `/Plugins/Aysw/web/jellycheckr-web.js`
+  - `/Plugins/Aysw/web/jellycheckr-config-ui.js`
+  - `/Plugins/Aysw/web/jellycheckr-config-ui.css`
+  - `/Plugins/Aysw/web/jellycheckr-config-ui-host.html`
 
-### No release produced
+### Native Clients Are Not Showing A Prompt
 
-- Symptom: Release Preview shows `none`, or Stage A exits successfully without publishing.
-- Causes:
-  - title maps to a no-release type (`docs`, `chore`, `ci`, `build`, `test`, `refactor`)
-  - `release:skip` is present
-- Fix: change the PR title or apply an explicit bump label.
+That is expected. Native clients do not render the Jellycheckr modal.
 
-### Prerelease requested but nothing published
+- Leave `Enable server-side fallback` on if you want Jellycheckr to enforce behavior there.
+- Use the fallback settings to control pause, stop, grace period, and inactivity handling.
 
-- Symptom: prerelease workflow runs but does not publish.
-- Causes:
-  - no release bump resolved
-  - running from a fork PR
-  - running from a non-`main` branch push preview
-- Fix: use a releasable title or explicit bump label, and publish from a trusted context.
+### I Want To Test Without Actually Stopping Playback
 
-### Version or tag collision
+- Turn on `Fallback dry run`.
+- Leave developer mode off unless you are intentionally doing fast-cycle testing.
 
-- Symptom: Stage A or publish steps fail because a tag already exists.
-- Fix: inspect the existing tag. If it points to a different SHA, a manual version decision is required before rerunning.
+### The Plugin Is Too Aggressive Or Not Aggressive Enough
 
-### Missing semver tags
+Tune these first:
 
-- Symptom: first automated release behaves as though there was no previous release.
-- Expected behavior: the workflow ignores non-semver tags (including `initial`) and uses `0.1.0` as the baseline.
+- `Episode threshold`
+- `Timer threshold`
+- `Fallback inactivity threshold`
+- `Cooldown`
 
-### Packaging validation failure
+## For Developers
 
-- Symptom: Stage A or prerelease build fails in `Validate-PluginPackage.ps1`.
-- Common causes:
-  - zip name does not match the computed version
-  - `meta.json.version` mismatch
-  - `meta.json.packageVersion` mismatch
-  - `meta.json.targetAbi` mismatch
-  - `meta.json.dependencies` is not `[]`
-  - assembly version mismatch
+The root README is intentionally focused on Jellyfin admins and plugin usage.
 
-### Release body mismatch
+For development, packaging, and release workflow details, see:
 
-- Symptom: publish step fails before updating the GitHub Release.
-- Cause: the generated body did not match the required manifest-only fenced block format.
-- Fix: inspect the publish script and ensure the body contains only the exact manifest block.
-
-### Missing Actions write permissions
-
-- Symptom: tags, releases, or the Release Preview PR comment fail to update.
-- Fix: confirm the workflow has:
-  - `pull-requests: read` for push-triggered release context resolution
-  - `contents: write` for release jobs
-  - `issues: write` and `pull-requests: write` for the Release Preview workflow
-  - repository `GITHUB_TOKEN` workflow permissions set to allow write access where comments/releases are expected
-
-## Compatibility
-
-This implementation is designed for current Jellyfin server/plugin patterns and Jellyfin Web.
-
-## Debugging Mode
-
-### HUD Debug Display
-
-<img width="1971" height="1109" alt="image" src="https://github.com/user-attachments/assets/e3514841-02eb-4cd4-8269-0debb6aa603c" />
-
-### Configuration 
-<img width="1289" height="1300" alt="image" src="https://github.com/user-attachments/assets/bcbce084-8062-4727-9848-9d9147dd9540" />
-
-
+- `docs/dev-notes.md`
+- `apps/server-plugin/README.md`
+- `apps/web-client/README.md`
+- `docs/config.md`
