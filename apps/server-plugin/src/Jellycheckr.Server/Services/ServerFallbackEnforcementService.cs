@@ -66,9 +66,10 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         var now = _clock.UtcNow;
         var config = _configService.GetEffectiveConfig(null);
         _logger.LogJellycheckrTrace(
-            "Server fallback loop tick nowUtc={NowUtc} config={@EffectiveConfig}",
+            "Server fallback loop tick nowUtc={NowUtc} enabled={Enabled} fallbackEnabled={FallbackEnabled}",
             now,
-            config);
+            config.Enabled,
+            config.EnableServerFallback);
 
         if (!config.Enabled || !config.EnableServerFallback)
         {

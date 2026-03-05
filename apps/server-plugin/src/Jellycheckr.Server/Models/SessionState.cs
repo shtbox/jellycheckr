@@ -3,6 +3,7 @@ namespace Jellycheckr.Server.Models;
 public sealed class SessionState
 {
     public string SessionId { get; set; } = string.Empty;
+    public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.MinValue;
     public DateTimeOffset LastAckUtc { get; set; } = DateTimeOffset.MinValue;
     public DateTimeOffset LastInteractionUtc { get; set; } = DateTimeOffset.MinValue;
     public bool PromptActive { get; set; }

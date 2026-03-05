@@ -1,8 +1,8 @@
-using System.Security.Claims;
 using Jellycheckr.Contracts;
 using Jellycheckr.Server.Infrastructure;
 using Jellycheckr.Server.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
@@ -15,13 +15,16 @@ namespace Jellycheckr.Server.Controllers;
 public sealed class AyswWebClientController : ControllerBase
 {
     private readonly IWebClientRegistrationService _registrationService;
+    private readonly IAuthenticatedUserIdResolver _authenticatedUserIdResolver;
     private readonly ILogger<AyswWebClientController> _logger;
 
     public AyswWebClientController(
         IWebClientRegistrationService registrationService,
+        IAuthenticatedUserIdResolver authenticatedUserIdResolver,
         ILogger<AyswWebClientController> logger)
     {
         _registrationService = registrationService;
+        _authenticatedUserIdResolver = authenticatedUserIdResolver;
         _logger = logger;
     }
 
@@ -30,11 +33,17 @@ public sealed class AyswWebClientController : ControllerBase
     {
         try
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var userId = _authenticatedUserIdResolver.Resolve(HttpContext);
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                _logger.LogJellycheckrWarning("[Jellycheckr] Web client register rejected due to missing authenticated user id.");
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden." });
+            }
+
             _logger.LogJellycheckrTrace(
-                "POST /web-client/register userId={UserId} request={@Request}",
-                userId ?? "(null)",
-                request);
+                "POST /web-client/register userId={UserId} deviceId={DeviceId}",
+                JellycheckrLogSanitizer.RedactIdentifier(userId),
+                JellycheckrLogSanitizer.RedactIdentifier(request.DeviceId));
             var response = _registrationService.Register(userId, request);
             return Ok(response);
         }
@@ -55,11 +64,18 @@ public sealed class AyswWebClientController : ControllerBase
     {
         try
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var userId = _authenticatedUserIdResolver.Resolve(HttpContext);
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                _logger.LogJellycheckrWarning("[Jellycheckr] Web client heartbeat rejected due to missing authenticated user id.");
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden." });
+            }
+
             _logger.LogJellycheckrTrace(
-                "POST /web-client/heartbeat userId={UserId} request={@Request}",
-                userId ?? "(null)",
-                request);
+                "POST /web-client/heartbeat userId={UserId} deviceId={DeviceId} requestedSessionId={RequestedSessionId}",
+                JellycheckrLogSanitizer.RedactIdentifier(userId),
+                JellycheckrLogSanitizer.RedactIdentifier(request.DeviceId),
+                JellycheckrLogSanitizer.RedactIdentifier(request.SessionId));
             var response = _registrationService.Heartbeat(userId, request);
             return Ok(response);
         }
@@ -80,13 +96,25 @@ public sealed class AyswWebClientController : ControllerBase
     {
         try
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var userId = _authenticatedUserIdResolver.Resolve(HttpContext);
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                _logger.LogJellycheckrWarning("[Jellycheckr] Web client unregister rejected due to missing authenticated user id.");
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden." });
+            }
+
             _logger.LogJellycheckrTrace(
-                "POST /web-client/unregister userId={UserId} request={@Request}",
-                userId ?? "(null)",
-                request);
+                "POST /web-client/unregister userId={UserId} sessionId={SessionId} deviceId={DeviceId}",
+                JellycheckrLogSanitizer.RedactIdentifier(userId),
+                JellycheckrLogSanitizer.RedactIdentifier(request.SessionId),
+                JellycheckrLogSanitizer.RedactIdentifier(request.DeviceId));
             _registrationService.Unregister(userId, request);
             return NoContent();
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogJellycheckrWarning(ex, "[Jellycheckr] Web client unregister rejected by session ownership policy.");
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden." });
         }
         catch (ArgumentException ex)
         {

@@ -12,12 +12,12 @@ public sealed class AckServiceTests
     public void ContinueAck_ResetsCountersAndSetsCooldown()
     {
         var clock = new FakeClock(DateTimeOffset.Parse("2026-02-22T20:00:00Z"));
-        var configService = new StubConfigService();
         var store = new SessionStateStore(NullLogger<SessionStateStore>.Instance);
-        var svc = new AckService(store, clock, NullLogger<AckService>.Instance);
+        var ownershipValidator = new StubSessionOwnershipValidator();
+        var svc = new AckService(store, ownershipValidator, clock, NullLogger<AckService>.Instance);
         var config = new EffectiveConfigResponse { CooldownMinutes = 30 };
 
-        var response = svc.HandleAck("s1", new AckRequest { AckType = "continue", Reason = "test" }, config);
+        var response = svc.HandleAck("s1", "u1", new AckRequest { AckType = "continue", Reason = "test" }, config);
 
         Assert.True(response.ResetApplied);
         Assert.Equal(DateTimeOffset.Parse("2026-02-22T20:30:00Z"), response.NextEligiblePromptUtc);
@@ -28,9 +28,10 @@ public sealed class AckServiceTests
     {
         var clock = new FakeClock(DateTimeOffset.Parse("2026-02-22T20:10:00Z"));
         var store = new SessionStateStore(NullLogger<SessionStateStore>.Instance);
-        var svc = new AckService(store, clock, NullLogger<AckService>.Instance);
+        var ownershipValidator = new StubSessionOwnershipValidator();
+        var svc = new AckService(store, ownershipValidator, clock, NullLogger<AckService>.Instance);
 
-        var response = svc.HandleInteraction("s1", new InteractionRequest { EventType = "keydown", ItemId = "item1" });
+        var response = svc.HandleInteraction("s1", "u1", new InteractionRequest { EventType = "keydown", ItemId = "item1" });
         var state = store.GetOrCreate("s1");
 
         Assert.True(response.Accepted);
@@ -43,7 +44,8 @@ public sealed class AckServiceTests
     {
         var clock = new FakeClock(DateTimeOffset.Parse("2026-02-22T20:20:00Z"));
         var store = new SessionStateStore(NullLogger<SessionStateStore>.Instance);
-        var svc = new AckService(store, clock, NullLogger<AckService>.Instance);
+        var ownershipValidator = new StubSessionOwnershipValidator();
+        var svc = new AckService(store, ownershipValidator, clock, NullLogger<AckService>.Instance);
         var state = store.GetOrCreate("s1");
         state.ServerFallbackEpisodeTransitionsSinceReset = 4;
         state.ServerFallbackPlaybackTicksSinceReset = TimeSpan.FromMinutes(90).Ticks;
@@ -51,7 +53,7 @@ public sealed class AckServiceTests
         state.PauseIssuedUtc = clock.UtcNow.AddSeconds(-10);
         state.PauseGraceDeadlineUtc = clock.UtcNow.AddSeconds(20);
 
-        _ = svc.HandleAck("s1", new AckRequest { AckType = "continue", Reason = "test" }, new EffectiveConfigResponse { CooldownMinutes = 5 });
+        _ = svc.HandleAck("s1", "u1", new AckRequest { AckType = "continue", Reason = "test" }, new EffectiveConfigResponse { CooldownMinutes = 5 });
 
         Assert.Equal(0, state.ServerFallbackEpisodeTransitionsSinceReset);
         Assert.Equal(0, state.ServerFallbackPlaybackTicksSinceReset);
@@ -65,9 +67,10 @@ public sealed class AckServiceTests
     {
         var clock = new FakeClock(DateTimeOffset.Parse("2026-02-22T20:25:00Z"));
         var store = new SessionStateStore(NullLogger<SessionStateStore>.Instance);
-        var svc = new AckService(store, clock, NullLogger<AckService>.Instance);
+        var ownershipValidator = new StubSessionOwnershipValidator();
+        var svc = new AckService(store, ownershipValidator, clock, NullLogger<AckService>.Instance);
 
-        _ = svc.HandleInteraction("s1", new InteractionRequest { EventType = "keydown", ClientType = "web" });
+        _ = svc.HandleInteraction("s1", "u1", new InteractionRequest { EventType = "keydown", ClientType = "web" });
 
         var state = store.GetOrCreate("s1");
         Assert.True(state.WebUiRegistered);
@@ -79,13 +82,27 @@ public sealed class AckServiceTests
     {
         var clock = new FakeClock(DateTimeOffset.Parse("2026-02-22T20:30:00Z"));
         var store = new SessionStateStore(NullLogger<SessionStateStore>.Instance);
-        var svc = new AckService(store, clock, NullLogger<AckService>.Instance);
+        var ownershipValidator = new StubSessionOwnershipValidator();
+        var svc = new AckService(store, ownershipValidator, clock, NullLogger<AckService>.Instance);
 
-        svc.MarkPromptActive("s1", clock.UtcNow.AddSeconds(45), "web");
+        svc.MarkPromptActive("s1", "u1", clock.UtcNow.AddSeconds(45), "web");
 
         var state = store.GetOrCreate("s1");
         Assert.True(state.PromptActive);
         Assert.True(state.WebUiRegistered);
         Assert.Equal(clock.UtcNow.Add(WebUiRegistrationLeasePolicy.LeaseDuration), state.WebUiRegistrationLeaseUtc);
+    }
+
+    [Fact]
+    public void HandleAck_RejectsWhenOwnershipValidatorFails()
+    {
+        var clock = new FakeClock(DateTimeOffset.Parse("2026-02-22T20:30:00Z"));
+        var store = new SessionStateStore(NullLogger<SessionStateStore>.Instance);
+        var ownershipValidator = new StubSessionOwnershipValidator { AllowMutations = false };
+        var svc = new AckService(store, ownershipValidator, clock, NullLogger<AckService>.Instance);
+
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            svc.HandleAck("s1", "u1", new AckRequest { AckType = "continue" }, new EffectiveConfigResponse { CooldownMinutes = 5 }));
+        Assert.Empty(store.Snapshot());
     }
 }

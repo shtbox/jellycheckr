@@ -40,8 +40,23 @@ Smoke checks include:
   - `/Plugins/Aysw/web/jellycheckr-config-ui.js`
   - `/Plugins/Aysw/web/jellycheckr-config-ui.css`
   - `/Plugins/Aysw/web/jellycheckr-config-ui-host.html`
+  - verifies `X-Content-Type-Options: nosniff` on each asset response
 - Authenticated plugin config request (`/Plugins/Aysw/config`)
 - Authenticated register sanity request (`/Plugins/Aysw/web-client/register`) expecting unresolved response with `reason=session_unresolved` when no active playback session exists
+- Authenticated heartbeat sanity request (`/Plugins/Aysw/web-client/heartbeat`) expecting unresolved response with `reason=session_unresolved` when no active playback session exists
+- Ownership enforcement checks expecting `403`:
+  - `POST /Plugins/Aysw/sessions/<foreign>/ack`
+  - `POST /Plugins/Aysw/sessions/<foreign>/interaction`
+  - `POST /Plugins/Aysw/sessions/<foreign>/prompt-shown`
+  - `POST /Plugins/Aysw/web-client/unregister` with a foreign session id
+- Developer fallback playback check:
+  - copies `tools/harness/test-video.mp4` into the harness container at `/media/harness/test-video.mp4`
+  - creates/refreshes a Jellyfin `HarnessMedia` library from `/media/harness`
+  - enables admin `DeveloperMode=true`, `DeveloperPromptAfterSeconds=15`, `ServerFallbackDryRun=true`
+  - publishes `Sessions/Playing` + `Sessions/Playing/Progress` updates and verifies the log trigger reason `developer_mode_after_15s`
+- Web UI injection registration check:
+  - verifies `Registered Jellyfin Web index.html transformation for web client injection` is present in logs for `10.11.x`
+  - records `skipped_unsupported_jellyfin_version` for `10.9.x` because no compatible File Transformation package is pinned in harness
 
 Artifacts:
 - Written under `tools/harness/artifacts/`
@@ -59,7 +74,11 @@ If you add a new Jellyfin minor line, update `Resolve-TargetFramework` in `tools
 
 - `up` runs with `--renew-anon-volumes` so each run starts from a clean Jellyfin `/config` state.
 - `down` removes anonymous volumes to prevent stale plugin binaries/config from leaking into later runs.
+- Harness sets deterministic server identity per Jellyfin version:
+  - fixed `ServerName` via compose hostname (`jellycheckr-harness-<version>`)
+  - fixed `ServerId` via `/config/data/device.txt` (version-derived MD5 in `Invoke-Harness.ps1`)
 - On some `10.11.x` starts, Jellyfin reports `StartupWizardCompleted=true` with no users. Harness auth bootstrap now forces startup wizard mode and seeds the harness credentials automatically.
+- Harness image auto-installs the File Transformation plugin only for `10.11.x`; `10.9.x` runs skip this because the available package targets newer Jellyfin assemblies.
 
 ## Testing When Server Is On TrueNAS SCALE
 

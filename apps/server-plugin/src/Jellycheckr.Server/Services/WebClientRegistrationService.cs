@@ -15,6 +15,7 @@ public interface IWebClientRegistrationService
 public sealed class WebClientRegistrationService : IWebClientRegistrationService
 {
     private readonly ISessionStateStore _sessionStateStore;
+    private readonly ISessionOwnershipValidator _sessionOwnershipValidator;
     private readonly IConfigService _configService;
     private readonly IWebClientSessionResolver _sessionResolver;
     private readonly ISessionStateObserver _sessionStateObserver;
@@ -23,6 +24,7 @@ public sealed class WebClientRegistrationService : IWebClientRegistrationService
 
     public WebClientRegistrationService(
         ISessionStateStore sessionStateStore,
+        ISessionOwnershipValidator sessionOwnershipValidator,
         IConfigService configService,
         IWebClientSessionResolver sessionResolver,
         ISessionStateObserver sessionStateObserver,
@@ -30,6 +32,7 @@ public sealed class WebClientRegistrationService : IWebClientRegistrationService
         ILogger<WebClientRegistrationService> logger)
     {
         _sessionStateStore = sessionStateStore;
+        _sessionOwnershipValidator = sessionOwnershipValidator;
         _configService = configService;
         _sessionResolver = sessionResolver;
         _sessionStateObserver = sessionStateObserver;
@@ -49,13 +52,36 @@ public sealed class WebClientRegistrationService : IWebClientRegistrationService
             throw new ArgumentException("Device id is required.", nameof(request.DeviceId));
         }
 
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            _logger.LogJellycheckrWarning("[Jellycheckr] Web client register rejected due to missing authenticated user id.");
+            return new WebClientRegisterResponse
+            {
+                Registered = false,
+                Reason = "session_unresolved"
+            };
+        }
+
         var snapshot = _sessionResolver.Resolve(userId, request.DeviceId);
         if (snapshot is null)
         {
             _logger.LogJellycheckrTrace(
                 "Web client register unresolved deviceId={DeviceId} userId={UserId}",
-                request.DeviceId,
-                userId ?? "(null)");
+                JellycheckrLogSanitizer.RedactIdentifier(request.DeviceId),
+                JellycheckrLogSanitizer.RedactIdentifier(userId));
+            return new WebClientRegisterResponse
+            {
+                Registered = false,
+                Reason = "session_unresolved"
+            };
+        }
+
+        if (!_sessionOwnershipValidator.CanMutateSession(userId, snapshot.SessionId))
+        {
+            _logger.LogJellycheckrWarning(
+                "[Jellycheckr] Web client register rejected by session ownership policy session={SessionId} userId={UserId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(snapshot.SessionId),
+                JellycheckrLogSanitizer.RedactIdentifier(userId));
             return new WebClientRegisterResponse
             {
                 Registered = false,
@@ -72,8 +98,8 @@ public sealed class WebClientRegistrationService : IWebClientRegistrationService
 
         _logger.LogJellycheckrInformation(
             "[Jellycheckr] Registered web client session={SessionId} deviceId={DeviceId} leaseUntilUtc={LeaseUntilUtc}.",
-            state.SessionId,
-            request.DeviceId,
+            JellycheckrLogSanitizer.RedactIdentifier(state.SessionId),
+            JellycheckrLogSanitizer.RedactIdentifier(request.DeviceId),
             state.WebUiRegistrationLeaseUtc);
 
         return new WebClientRegisterResponse
@@ -97,13 +123,36 @@ public sealed class WebClientRegistrationService : IWebClientRegistrationService
             throw new ArgumentException("Device id is required.", nameof(request.DeviceId));
         }
 
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            _logger.LogJellycheckrWarning("[Jellycheckr] Web client heartbeat rejected due to missing authenticated user id.");
+            return new WebClientHeartbeatResponse
+            {
+                Accepted = false,
+                Reason = "session_unresolved"
+            };
+        }
+
         var snapshot = _sessionResolver.Resolve(userId, request.DeviceId);
         if (snapshot is null)
         {
             _logger.LogJellycheckrTrace(
                 "Web client heartbeat unresolved deviceId={DeviceId} userId={UserId}",
-                request.DeviceId,
-                userId ?? "(null)");
+                JellycheckrLogSanitizer.RedactIdentifier(request.DeviceId),
+                JellycheckrLogSanitizer.RedactIdentifier(userId));
+            return new WebClientHeartbeatResponse
+            {
+                Accepted = false,
+                Reason = "session_unresolved"
+            };
+        }
+
+        if (!_sessionOwnershipValidator.CanMutateSession(userId, snapshot.SessionId))
+        {
+            _logger.LogJellycheckrWarning(
+                "[Jellycheckr] Web client heartbeat rejected by session ownership policy session={SessionId} userId={UserId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(snapshot.SessionId),
+                JellycheckrLogSanitizer.RedactIdentifier(userId));
             return new WebClientHeartbeatResponse
             {
                 Accepted = false,
@@ -120,9 +169,9 @@ public sealed class WebClientRegistrationService : IWebClientRegistrationService
 
         _logger.LogJellycheckrTrace(
             "Web client heartbeat accepted session={SessionId} deviceId={DeviceId} requestedSessionId={RequestedSessionId} leaseUntilUtc={LeaseUntilUtc}",
-            state.SessionId,
-            request.DeviceId,
-            request.SessionId ?? "(none)",
+            JellycheckrLogSanitizer.RedactIdentifier(state.SessionId),
+            JellycheckrLogSanitizer.RedactIdentifier(request.DeviceId),
+            JellycheckrLogSanitizer.RedactIdentifier(request.SessionId),
             state.WebUiRegistrationLeaseUtc);
 
         return new WebClientHeartbeatResponse
@@ -145,14 +194,19 @@ public sealed class WebClientRegistrationService : IWebClientRegistrationService
             throw new ArgumentException("Either session id or device id is required.", nameof(request));
         }
 
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new UnauthorizedAccessException("Authenticated user id is required for unregister.");
+        }
+
         var state = ResolveStateForUnregister(userId, request);
         if (state is null)
         {
             _logger.LogJellycheckrTrace(
                 "Web client unregister found no state userId={UserId} sessionId={SessionId} deviceId={DeviceId}",
-                userId ?? "(null)",
-                request.SessionId ?? "(none)",
-                request.DeviceId ?? "(none)");
+                JellycheckrLogSanitizer.RedactIdentifier(userId),
+                JellycheckrLogSanitizer.RedactIdentifier(request.SessionId),
+                JellycheckrLogSanitizer.RedactIdentifier(request.DeviceId));
             return;
         }
 
@@ -162,15 +216,19 @@ public sealed class WebClientRegistrationService : IWebClientRegistrationService
 
         _logger.LogJellycheckrInformation(
             "[Jellycheckr] Unregistered web client session={SessionId}.",
-            state.SessionId);
+            JellycheckrLogSanitizer.RedactIdentifier(state.SessionId));
     }
 
     private SessionState? ResolveStateForUnregister(string? userId, WebClientUnregisterRequest request)
     {
-        var bySessionId = FindStateBySessionId(request.SessionId);
-        if (bySessionId is not null)
+        if (!string.IsNullOrWhiteSpace(request.SessionId))
         {
-            return bySessionId;
+            if (!_sessionOwnershipValidator.CanMutateSession(userId, request.SessionId))
+            {
+                throw new UnauthorizedAccessException("Session is not owned by the current user.");
+            }
+
+            return FindStateBySessionId(request.SessionId);
         }
 
         if (string.IsNullOrWhiteSpace(request.DeviceId))
@@ -179,7 +237,17 @@ public sealed class WebClientRegistrationService : IWebClientRegistrationService
         }
 
         var snapshot = _sessionResolver.Resolve(userId, request.DeviceId);
-        return snapshot is null ? null : FindStateBySessionId(snapshot.SessionId);
+        if (snapshot is null)
+        {
+            return null;
+        }
+
+        if (!_sessionOwnershipValidator.CanMutateSession(userId, snapshot.SessionId))
+        {
+            throw new UnauthorizedAccessException("Session is not owned by the current user.");
+        }
+
+        return FindStateBySessionId(snapshot.SessionId);
     }
 
     private SessionState? FindStateBySessionId(string? sessionId)

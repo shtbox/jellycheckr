@@ -1,3 +1,4 @@
+using Jellycheckr.Server.Infrastructure;
 using Microsoft.Extensions.Logging;
 
 namespace Jellycheckr.Server.Services;
@@ -28,10 +29,16 @@ public sealed class WebClientSessionResolver : IWebClientSessionResolver
             return null;
         }
 
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            _logger.LogJellycheckrTrace("Web client session resolution skipped because userId was missing.");
+            return null;
+        }
+
         var candidates = _sessionSnapshotProvider.GetCurrentSessions()
-            .Where(snapshot => string.Equals(snapshot.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(snapshot => UserMatches(snapshot, userId))
-            .ThenByDescending(HasCurrentItem)
+            .Where(snapshot => string.Equals(snapshot.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase)
+                               && string.Equals(snapshot.UserId, userId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(HasCurrentItem)
             .ThenByDescending(IsLikelyWebClient)
             .ThenByDescending(snapshot => snapshot.IsActive)
             .ThenByDescending(snapshot => snapshot.LastActivityUtc ?? DateTimeOffset.MinValue)
@@ -40,18 +47,12 @@ public sealed class WebClientSessionResolver : IWebClientSessionResolver
         var resolved = candidates.FirstOrDefault();
         _logger.LogJellycheckrTrace(
             "Web client session resolution deviceId={DeviceId} userId={UserId} candidates={CandidateCount} resolvedSessionId={SessionId}",
-            deviceId,
-            userId ?? "(null)",
+            JellycheckrLogSanitizer.RedactIdentifier(deviceId),
+            JellycheckrLogSanitizer.RedactIdentifier(userId),
             candidates.Length,
-            resolved?.SessionId ?? "(none)");
+            JellycheckrLogSanitizer.RedactIdentifier(resolved?.SessionId));
 
         return resolved;
-    }
-
-    private static bool UserMatches(ServerObservedSessionSnapshot snapshot, string? userId)
-    {
-        return !string.IsNullOrWhiteSpace(userId)
-               && string.Equals(snapshot.UserId, userId, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasCurrentItem(ServerObservedSessionSnapshot snapshot)

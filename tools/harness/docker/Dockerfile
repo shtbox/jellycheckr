@@ -1,6 +1,8 @@
 ﻿# syntax=docker/dockerfile:1.6
 ARG JELLYFIN_VERSION=10.11.6
 ARG DOTNET_TARGET_FRAMEWORK=net9.0
+ARG FILE_TRANSFORMATION_VERSION=2.5.4.0
+ARG HARNESS_SERVER_ID=9f1d4f3cecb043f9b651c6b35acbbd7d
 
 FROM node:20-bookworm-slim AS node-runtime
 
@@ -24,5 +26,30 @@ RUN dotnet publish apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.
     -o /out/plugin
 
 FROM jellyfin/jellyfin:${JELLYFIN_VERSION}
+ARG JELLYFIN_VERSION
+ARG FILE_TRANSFORMATION_VERSION
+ARG HARNESS_SERVER_ID
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    case "${JELLYFIN_VERSION}" in \
+      10.11.*) \
+        file_transformation_asset="Release-${JELLYFIN_VERSION}.zip"; \
+        file_transformation_url="https://github.com/IAmParadox27/jellyfin-plugin-file-transformation/releases/download/${FILE_TRANSFORMATION_VERSION}/${file_transformation_asset}"; \
+        mkdir -p /config/plugins/FileTransformation; \
+        curl -fsSL "${file_transformation_url}" -o /tmp/file-transformation.zip; \
+        unzip -oq /tmp/file-transformation.zip -d /config/plugins/FileTransformation; \
+        rm -f /tmp/file-transformation.zip; \
+        ;; \
+      *) \
+        echo "Skipping File Transformation plugin install for Jellyfin ${JELLYFIN_VERSION}; no compatible harness package is pinned."; \
+        ;; \
+    esac
+
 RUN mkdir -p /config/plugins/JellycheckrAysw
 COPY --from=plugin-build /out/plugin/ /config/plugins/JellycheckrAysw/
+RUN mkdir -p /config/data \
+    && printf '%s' "${HARNESS_SERVER_ID}" > /config/data/device.txt

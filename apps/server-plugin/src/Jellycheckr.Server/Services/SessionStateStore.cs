@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Jellycheckr.Server.Infrastructure;
 using Jellycheckr.Server.Models;
 using Microsoft.Extensions.Logging;
 
@@ -28,19 +29,29 @@ public sealed class SessionStateStore : ISessionStateStore
         var state = _states.GetOrAdd(sessionId, id =>
         {
             created = true;
-            return new SessionState { SessionId = id };
+            return new SessionState
+            {
+                SessionId = id,
+                CreatedUtc = DateTimeOffset.UtcNow
+            };
         });
+
+        if (state.CreatedUtc == DateTimeOffset.MinValue)
+        {
+            state.CreatedUtc = DateTimeOffset.UtcNow;
+        }
 
         if (created)
         {
-            _logger.LogJellycheckrInformation("[Jellycheckr] Created session state for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrInformation(
+                "[Jellycheckr] Created session state for session={SessionId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId));
         }
 
         _logger.LogJellycheckrTrace(
-            "SessionStateStore.GetOrCreate session={SessionId} created={Created} state={@State}",
-            sessionId,
-            created,
-            state);
+            "SessionStateStore.GetOrCreate session={SessionId} created={Created}",
+            JellycheckrLogSanitizer.RedactIdentifier(sessionId),
+            created);
 
         return state;
     }
@@ -49,9 +60,8 @@ public sealed class SessionStateStore : ISessionStateStore
     {
         var snapshot = _states.Values.ToArray();
         _logger.LogJellycheckrTrace(
-            "SessionStateStore.Snapshot count={Count} sessions={@Sessions}",
-            snapshot.Length,
-            snapshot);
+            "SessionStateStore.Snapshot count={Count}",
+            snapshot.Length);
         return snapshot;
     }
 
@@ -60,7 +70,7 @@ public sealed class SessionStateStore : ISessionStateStore
         var removed = _states.TryRemove(sessionId, out _);
         _logger.LogJellycheckrTrace(
             "SessionStateStore.Remove session={SessionId} removed={Removed}",
-            sessionId,
+            JellycheckrLogSanitizer.RedactIdentifier(sessionId),
             removed);
         return removed;
     }
@@ -70,7 +80,11 @@ public sealed class SessionStateStore : ISessionStateStore
         var removed = 0;
         foreach (var pair in _states)
         {
-            if (pair.Value.LastSeenUtc == DateTimeOffset.MinValue || pair.Value.LastSeenUtc >= cutoffUtc)
+            var stalenessAnchorUtc = pair.Value.LastSeenUtc > DateTimeOffset.MinValue
+                ? pair.Value.LastSeenUtc
+                : pair.Value.CreatedUtc;
+
+            if (stalenessAnchorUtc > DateTimeOffset.MinValue && stalenessAnchorUtc >= cutoffUtc)
             {
                 continue;
             }
