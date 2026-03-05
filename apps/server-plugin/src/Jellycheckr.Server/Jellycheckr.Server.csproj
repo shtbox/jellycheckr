@@ -198,7 +198,7 @@
     Name="JellycheckrCopyWebAssetsToPublishOutput"
     AfterTargets="Publish"
     DependsOnTargets="JellycheckrBuildWebAssets"
-    Condition="'$(TargetFramework)' == 'net8.0' and '$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    Condition="'$(TargetFramework)' != '' and '$(JellycheckrBuildEmbeddedAssets)' == 'true' and '$(DesignTimeBuild)' != 'true'">
     <PropertyGroup>
       <JellycheckrPublishWebAssetsDir>$([MSBuild]::EnsureTrailingSlash('$(PublishDir)web'))</JellycheckrPublishWebAssetsDir>
     </PropertyGroup>

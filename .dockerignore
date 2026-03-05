@@ -1,0 +1,9 @@
+﻿.git
+.gitignore
+**/node_modules
+**/bin
+**/obj
+**/dist
+**/coverage
+**/TestResults
+tools/harness/artifacts

@@ -14,6 +14,53 @@
 Optional backend-only fast loop (skip frontend rebuilds):
 - `dotnet build apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.csproj -p:JellycheckrBuildEmbeddedAssets=false`
 
+## Repeatable Docker Harness (Pre-release Validation)
+
+Use the harness to build plugin source against a pinned Jellyfin release image, run the container, and execute smoke checks.
+
+Primary script:
+- `pwsh ./tools/harness/scripts/Invoke-Harness.ps1`
+
+Quick commands:
+- Build only:
+  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode build -Version 10.11.6`
+- Start container (build + up):
+  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode up -Version 10.11.6`
+- One-command smoke run (build + up + checks + artifacts):
+  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode smoke -Version 10.11.6`
+- Matrix run from `tools/harness/versions.json`:
+  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode matrix`
+- Stop container:
+  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode down -Version 10.11.6`
+
+Smoke checks include:
+- Jellyfin readiness check (`/System/Info/Public`)
+- Plugin web asset checks (`/Plugins/Aysw/web/*`)
+  - `/Plugins/Aysw/web/jellycheckr-web.js`
+  - `/Plugins/Aysw/web/jellycheckr-config-ui.js`
+  - `/Plugins/Aysw/web/jellycheckr-config-ui.css`
+  - `/Plugins/Aysw/web/jellycheckr-config-ui-host.html`
+- Authenticated plugin config request (`/Plugins/Aysw/config`)
+- Authenticated register sanity request (`/Plugins/Aysw/web-client/register`) expecting unresolved response with `reason=session_unresolved` when no active playback session exists
+
+Artifacts:
+- Written under `tools/harness/artifacts/`
+- Includes smoke summary, API response payloads, and docker compose logs per run
+
+### Version/Framework Mapping
+
+The harness enforces the plugin framework based on Jellyfin package compatibility:
+- `10.11.x` => `net9.0`
+- `10.9.x` => `net8.0`
+
+If you add a new Jellyfin minor line, update `Resolve-TargetFramework` in `tools/harness/scripts/Invoke-Harness.ps1`.
+
+### Harness Determinism Notes
+
+- `up` runs with `--renew-anon-volumes` so each run starts from a clean Jellyfin `/config` state.
+- `down` removes anonymous volumes to prevent stale plugin binaries/config from leaking into later runs.
+- On some `10.11.x` starts, Jellyfin reports `StartupWizardCompleted=true` with no users. Harness auth bootstrap now forces startup wizard mode and seeds the harness credentials automatically.
+
 ## Testing When Server Is On TrueNAS SCALE
 
 - Keep your TrueNAS Jellyfin as the playback target.

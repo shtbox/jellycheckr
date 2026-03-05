@@ -1,43 +1,33 @@
-import { HttpApiClient } from "./api/client";
+﻿import { HttpApiClient } from "./api/client";
+import {
+  createAutoMountOrchestrator,
+  type AutoMountBootstrapState,
+  type HostContext,
+  type PlayerAdapterContext
+} from "./autoMount/orchestrator";
 import { mountAysw } from "./integration/jellyfinHooks";
 import { debug, warn } from "./logging/logger";
-import type { PlayerAdapter } from "./player/playerAdapter";
-import type { MediaItem } from "./player/playerAdapter";
-import type { AyswModule, WebClientBootstrapContext } from "./integration/jellyfinHooks";
-
-const HOST_RETRY_MS = 250;
-const UNRESOLVED_SESSION_RETRY_MS = 2_000;
-const REGISTER_FAILURE_INITIAL_RETRY_MS = 5_000;
-const REGISTER_FAILURE_BACKOFF_RETRY_MS = 15_000;
-const HARD_MOUNT_RETRY_MS = 10_000;
-const HEARTBEAT_INTERVAL_MS = 30_000;
-
-type AutoMountBootstrapState = "waiting_for_host" | "resolving_session" | "registered" | "mounted";
-
-interface HostContext {
-  accessToken: string;
-  deviceId: string;
-}
+import type { MediaItem, PlayerAdapter } from "./player/playerAdapter";
 
 interface ApiClientHost {
   accessToken?: () => string;
   deviceId?: () => string;
 }
 
-let activeVideo: HTMLVideoElement | null = null;
-let activeModule: AyswModule | null = null;
-let activeSessionId: string | null = null;
-let activeDeviceId: string | null = null;
-let activeBootstrap: WebClientBootstrapContext | null = null;
-let mountInFlight = false;
-let scheduledCheck = false;
-let pendingRetryTimerId: number | null = null;
-let heartbeatIntervalId: number | null = null;
-let lastCheckReason = "startup";
-let bootstrapState: AutoMountBootstrapState = "waiting_for_host";
-let nextRegisterRetryMs = REGISTER_FAILURE_INITIAL_RETRY_MS;
-
 const registrationApi = new HttpApiClient();
+
+const autoMountOrchestrator = createAutoMountOrchestrator<HTMLVideoElement>({
+  registrationApi,
+  mountAysw,
+  resolveHostContext,
+  findBestVideoElement,
+  isVideoConnected(video): boolean {
+    return video instanceof HTMLVideoElement && video.isConnected;
+  },
+  createPlayerAdapter: createDomPlayerAdapter,
+  debug,
+  warn
+});
 
 declare global {
   interface Window {
@@ -62,20 +52,10 @@ declare global {
 window.JellycheckrAysw = {
   mount: mountAysw,
   remountNow(): void {
-    scheduleAutoMountCheck("manual");
+    autoMountOrchestrator.scheduleCheck("manual");
   },
   getAutoMountStatus() {
-    const currentVideo = findBestVideoElement();
-    return {
-      active: !!activeModule,
-      activeVideoConnected: !!activeVideo?.isConnected,
-      hasVideoElement: !!currentVideo,
-      mountInFlight,
-      lastCheckReason,
-      bootstrapState,
-      sessionRegistered: !!activeSessionId,
-      sessionId: activeSessionId
-    };
+    return autoMountOrchestrator.getStatus();
   }
 };
 
@@ -85,19 +65,19 @@ startAutoMountMonitor();
 
 function startAutoMountMonitor(): void {
   debug("Starting automatic mount monitor");
-  scheduleAutoMountCheck("startup");
+  autoMountOrchestrator.scheduleCheck("startup");
 
-  const trigger = (reason: string): void => scheduleAutoMountCheck(reason);
+  const trigger = (reason: string): void => autoMountOrchestrator.scheduleCheck(reason);
 
   const observer = new MutationObserver(() => trigger("dom-mutation"));
   observer.observe(document.documentElement, { childList: true, subtree: true });
 
   window.addEventListener("pageshow", () => trigger("pageshow"));
   window.addEventListener("pagehide", () => {
-    void disposeActiveModule("pagehide");
+    void autoMountOrchestrator.dispose("pagehide");
   });
   window.addEventListener("beforeunload", () => {
-    void disposeActiveModule("beforeunload");
+    void autoMountOrchestrator.dispose("beforeunload");
   });
   window.addEventListener("hashchange", () => trigger("hashchange"));
   window.addEventListener("popstate", () => trigger("popstate"));
@@ -130,180 +110,10 @@ function patchHistoryMethod(methodName: "pushState" | "replaceState", reason: st
   const original = history[methodName];
   history[methodName] = function patchedHistoryMethod(this: History, ...args: any[]) {
     const result = original.apply(this, args as [any, string, (string | URL | null)?]);
-    scheduleAutoMountCheck(reason);
+    autoMountOrchestrator.scheduleCheck(reason);
     return result;
   };
   historyObj[flagName] = true;
-}
-
-function scheduleAutoMountCheck(reason: string, delayMs = 0): void {
-  lastCheckReason = reason;
-
-  if (delayMs <= 0) {
-    clearPendingRetry();
-    queueImmediateAutoMountCheck(reason);
-    return;
-  }
-
-  if (pendingRetryTimerId !== null) {
-    return;
-  }
-
-  pendingRetryTimerId = window.setTimeout(() => {
-    pendingRetryTimerId = null;
-    queueImmediateAutoMountCheck(reason);
-  }, delayMs);
-}
-
-function queueImmediateAutoMountCheck(reason: string): void {
-  if (scheduledCheck) {
-    return;
-  }
-
-  scheduledCheck = true;
-  window.setTimeout(() => {
-    scheduledCheck = false;
-    void ensureAutoMounted(reason);
-  }, 0);
-}
-
-function clearPendingRetry(): void {
-  if (pendingRetryTimerId === null) {
-    return;
-  }
-
-  window.clearTimeout(pendingRetryTimerId);
-  pendingRetryTimerId = null;
-}
-
-async function ensureAutoMounted(reason: string): Promise<void> {
-  const video = findBestVideoElement();
-
-  if (!video) {
-    if (activeModule) {
-      debug("Disposing AYSW module because no compatible video element remains", { reason });
-      await disposeActiveModule("video-missing", false);
-    }
-
-    bootstrapState = "waiting_for_host";
-    debug("No video element found during auto-mount check", { reason });
-    return;
-  }
-
-  if (activeModule && hasStableActiveVideo()) {
-    if (activeVideo !== video) {
-      debug("Keeping current mounted video binding despite a different candidate video", {
-        reason,
-        currentVideoConnected: activeVideo?.isConnected ?? false
-      });
-    }
-    return;
-  }
-
-  if (mountInFlight) {
-    debug("Skipping auto-mount check because a mount is already in-flight", { reason });
-    return;
-  }
-
-  if (activeModule && activeVideo && activeVideo !== video) {
-    debug("Disposing AYSW module before mounting on a new video element");
-    await disposeActiveModule("video-changed", false);
-  }
-
-  const hostContext = resolveHostContext();
-  if (!hostContext) {
-    bootstrapState = "waiting_for_host";
-    resetRegisterBackoff();
-    debug("Host prerequisites are not ready yet", { reason });
-    scheduleAutoMountCheck("waiting_for_host", HOST_RETRY_MS);
-    return;
-  }
-
-  mountInFlight = true;
-  try {
-    let registration: { sessionId: string; bootstrap: WebClientBootstrapContext } | null = null;
-    if (hasReusableRegistrationContext(hostContext)) {
-      bootstrapState = "registered";
-      registration = {
-        sessionId: activeSessionId!,
-        bootstrap: activeBootstrap!
-      };
-    } else {
-      bootstrapState = "resolving_session";
-      registration = await registerCurrentSession(hostContext, reason);
-      if (!registration) {
-        return;
-      }
-
-      activeSessionId = registration.sessionId;
-      activeDeviceId = hostContext.deviceId;
-      activeBootstrap = registration.bootstrap;
-    }
-
-    bootstrapState = "registered";
-
-    debug("Attempting automatic mount", { reason, sessionId: activeSessionId, deviceId: activeDeviceId });
-    const adapter = createDomPlayerAdapter(video);
-    const module = await mountAysw(adapter, registration.bootstrap);
-    activeVideo = video;
-    activeModule = module;
-    bootstrapState = "mounted";
-    startHeartbeatLoop();
-    debug("Automatic mount completed", { reason, sessionId: activeSessionId });
-  } catch (err) {
-    activeModule = null;
-    activeVideo = null;
-    bootstrapState = hasActiveRegistrationContext() ? "registered" : "waiting_for_host";
-    warn("Automatic mount failed after session registration; continuing without Jellycheckr UI", err);
-    scheduleAutoMountCheck("mount_failed", HARD_MOUNT_RETRY_MS);
-  } finally {
-    mountInFlight = false;
-  }
-}
-
-async function registerCurrentSession(
-  hostContext: HostContext,
-  reason: string
-): Promise<{ sessionId: string; bootstrap: WebClientBootstrapContext } | null> {
-  try {
-    const response = await registrationApi.registerWebClient({
-      deviceId: hostContext.deviceId
-    });
-
-    if (!response.registered || !response.sessionId || !response.config) {
-      bootstrapState = "waiting_for_host";
-      resetRegisterBackoff();
-      debug("Web client registration did not resolve a playable session yet", {
-        reason,
-        deviceId: hostContext.deviceId,
-        response
-      });
-      scheduleAutoMountCheck("session_unresolved", UNRESOLVED_SESSION_RETRY_MS);
-      return null;
-    }
-
-    resetRegisterBackoff();
-    debug("Web client registration completed", {
-      reason,
-      sessionId: response.sessionId,
-      deviceId: hostContext.deviceId,
-      leaseExpiresUtc: response.leaseExpiresUtc ?? null
-    });
-
-    return {
-      sessionId: response.sessionId,
-      bootstrap: {
-        config: response.config,
-        deviceId: hostContext.deviceId
-      }
-    };
-  } catch (err) {
-    const retryMs = consumeRegisterRetryDelay();
-    bootstrapState = "waiting_for_host";
-    warn("Web client registration failed; retrying", err);
-    scheduleAutoMountCheck("register_failed", retryMs);
-    return null;
-  }
 }
 
 function resolveHostContext(): HostContext | null {
@@ -318,113 +128,10 @@ function resolveHostContext(): HostContext | null {
   return { accessToken, deviceId };
 }
 
-function resetRegisterBackoff(): void {
-  nextRegisterRetryMs = REGISTER_FAILURE_INITIAL_RETRY_MS;
-}
-
-function consumeRegisterRetryDelay(): number {
-  const delay = nextRegisterRetryMs;
-  nextRegisterRetryMs = REGISTER_FAILURE_BACKOFF_RETRY_MS;
-  return delay;
-}
-
-function startHeartbeatLoop(): void {
-  stopHeartbeatLoop();
-  heartbeatIntervalId = window.setInterval(() => {
-    void sendHeartbeat();
-  }, HEARTBEAT_INTERVAL_MS);
-}
-
-function stopHeartbeatLoop(): void {
-  if (heartbeatIntervalId === null) {
-    return;
-  }
-
-  window.clearInterval(heartbeatIntervalId);
-  heartbeatIntervalId = null;
-}
-
-async function sendHeartbeat(): Promise<void> {
-  if (!activeModule || !activeDeviceId) {
-    return;
-  }
-
-  try {
-    const response = await registrationApi.heartbeatWebClient({
-      deviceId: activeDeviceId,
-      sessionId: activeSessionId ?? undefined
-    });
-
-    if (!response.accepted) {
-      debug("Web client heartbeat was not accepted; disposing current module", {
-        sessionId: activeSessionId,
-        deviceId: activeDeviceId,
-        response
-      });
-      await disposeActiveModule("heartbeat_rejected");
-      scheduleAutoMountCheck("heartbeat_rejected", UNRESOLVED_SESSION_RETRY_MS);
-      return;
-    }
-
-    if (response.sessionId) {
-      activeSessionId = response.sessionId;
-    }
-  } catch (err) {
-    warn("Web client heartbeat failed; retaining the current registration until the lease expires", err);
-  }
-}
-
-async function disposeActiveModule(reason = "dispose", unregisterSession = true): Promise<void> {
-  stopHeartbeatLoop();
-
-  try {
-    activeModule?.dispose();
-  } catch (err) {
-    warn("Failed to dispose AYSW module", err);
-  } finally {
-    activeModule = null;
-    activeVideo = null;
-  }
-
-  if (unregisterSession) {
-    await unregisterActiveSession(reason);
-    bootstrapState = "waiting_for_host";
-    return;
-  }
-
-  bootstrapState = hasActiveRegistrationContext() ? "registered" : "waiting_for_host";
-}
-
-async function unregisterActiveSession(reason: string): Promise<void> {
-  const sessionId = activeSessionId;
-  const deviceId = activeDeviceId;
-
-  activeSessionId = null;
-  activeDeviceId = null;
-  activeBootstrap = null;
-
-  if (!sessionId && !deviceId) {
-    return;
-  }
-
-  try {
-    await registrationApi.unregisterWebClient({
-      sessionId: sessionId ?? undefined,
-      deviceId: deviceId ?? undefined
-    });
-    debug("Unregistered web client session", { reason, sessionId, deviceId });
-  } catch (err) {
-    debug("Failed to unregister web client session (non-fatal)", { reason, sessionId, deviceId, err });
-  }
-}
-
 function findBestVideoElement(): HTMLVideoElement | null {
-  if (hasStableActiveVideo()) {
-    return activeVideo;
-  }
-
-  const videos = Array.from(document.querySelectorAll("video"))
-    .filter((node): node is HTMLVideoElement => node instanceof HTMLVideoElement);
+  const videos = Array.from(document.querySelectorAll("video")).filter(
+    (node): node is HTMLVideoElement => node instanceof HTMLVideoElement
+  );
 
   if (videos.length === 0) {
     return null;
@@ -434,17 +141,13 @@ function findBestVideoElement(): HTMLVideoElement | null {
   return visible ?? videos[0] ?? null;
 }
 
-function hasStableActiveVideo(): boolean {
-  return activeVideo instanceof HTMLVideoElement && activeVideo.isConnected;
-}
-
-function createDomPlayerAdapter(video: HTMLVideoElement): PlayerAdapter {
+function createDomPlayerAdapter(video: HTMLVideoElement, context: PlayerAdapterContext): PlayerAdapter {
   return {
     getSessionId(): string {
-      return activeSessionId ?? getCurrentHostDeviceId() ?? `web-${window.location.host}`;
+      return context.getSessionId() ?? getCurrentHostDeviceId() ?? `web-${window.location.host}`;
     },
     getDeviceId(): string | null {
-      return activeDeviceId ?? getCurrentHostDeviceId();
+      return context.getDeviceId() ?? getCurrentHostDeviceId();
     },
     getCurrentItem(): MediaItem | null {
       return null;
@@ -494,14 +197,6 @@ function createDomPlayerAdapter(video: HTMLVideoElement): PlayerAdapter {
 
 function getCurrentHostDeviceId(): string | null {
   return window.ApiClient?.deviceId?.() ?? null;
-}
-
-function hasActiveRegistrationContext(): boolean {
-  return !!activeSessionId && !!activeDeviceId && !!activeBootstrap;
-}
-
-function hasReusableRegistrationContext(hostContext: HostContext): boolean {
-  return hasActiveRegistrationContext() && activeDeviceId === hostContext.deviceId;
 }
 
 function tryExitPlaybackView(): void {
