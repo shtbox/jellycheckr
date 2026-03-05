@@ -88,8 +88,8 @@ export function FallbackSection(props: FallbackSectionProps) {
         <TextField
           id="jc_fb_message_text"
           label="Fallback client message"
-          value={c.ServerFallbackClientMessage}
-          onInput={(e: any) => props.onUpdateField('ServerFallbackClientMessage', String(e.currentTarget.value ?? ''))}
+          value={c.ClientMessage}
+          onInput={(e: any) => props.onUpdateField('ClientMessage', String(e.currentTarget.value ?? ''))}
           help="Best-effort message sent before pause when messaging is enabled."
         />
       </div>

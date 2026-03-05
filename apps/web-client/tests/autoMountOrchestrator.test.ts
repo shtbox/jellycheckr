@@ -24,7 +24,7 @@ const defaultConfig: EffectiveConfigResponse = {
   serverFallbackPauseBeforeStop: true,
   serverFallbackPauseGraceSeconds: 45,
   serverFallbackSendMessageBeforePause: true,
-  serverFallbackClientMessage: "Are you still watching?",
+  clientMessage: "Are you still watching?",
   serverFallbackDryRun: false,
   debugLogging: false,
   developerMode: false,
@@ -165,6 +165,23 @@ describe("auto-mount orchestrator", () => {
     await harness.orchestrator.dispose("full_cleanup", true);
     expect(harness.unregisterWebClient).toHaveBeenCalledTimes(1);
   });
+
+  it("disposes_module_when_video_disappears", async () => {
+    const harness = createHarness();
+    harness.orchestrator.scheduleCheck("startup");
+    await advanceAndFlush(0);
+
+    expect(harness.mountAysw).toHaveBeenCalledTimes(1);
+    expect(harness.moduleDispose).toHaveBeenCalledTimes(0);
+
+    harness.setVideo(null);
+    harness.orchestrator.scheduleCheck("dom-mutation");
+    await advanceAndFlush(0);
+
+    expect(harness.moduleDispose).toHaveBeenCalledTimes(1);
+    expect(harness.unregisterWebClient).toHaveBeenCalledTimes(0);
+    expect(harness.orchestrator.getStatus().active).toBe(false);
+  });
 });
 
 interface HarnessOptions {
@@ -173,7 +190,7 @@ interface HarnessOptions {
 }
 
 function createHarness(options: HarnessOptions = {}) {
-  const activeVideo: FakeVideo = { connected: true };
+  let activeVideo: FakeVideo | null = { connected: true };
   const moduleDispose = vi.fn();
   const registerWebClient = vi.fn(async () => {
     const factory = options.registerResponseFactory;
@@ -247,7 +264,10 @@ function createHarness(options: HarnessOptions = {}) {
     heartbeatWebClient,
     unregisterWebClient,
     mountAysw,
-    moduleDispose
+    moduleDispose,
+    setVideo(video: FakeVideo | null) {
+      activeVideo = video;
+    }
   };
 }
 

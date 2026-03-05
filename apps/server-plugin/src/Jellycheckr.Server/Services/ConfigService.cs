@@ -120,9 +120,9 @@ public sealed class ConfigService : IConfigService
             ServerFallbackPauseBeforeStop = config.ServerFallbackPauseBeforeStop,
             ServerFallbackPauseGraceSeconds = config.ServerFallbackPauseGraceSeconds,
             ServerFallbackSendMessageBeforePause = config.ServerFallbackSendMessageBeforePause,
-            ServerFallbackClientMessage = string.IsNullOrWhiteSpace(config.ServerFallbackClientMessage)
+            ClientMessage = string.IsNullOrWhiteSpace(config.ClientMessage)
                 ? "Are you still watching? Playback will stop soon unless you resume."
-                : config.ServerFallbackClientMessage.Trim(),
+                : config.ClientMessage.Trim(),
             ServerFallbackDryRun = config.ServerFallbackDryRun,
             DebugLogging = config.DebugLogging,
             DeveloperMode = config.DeveloperMode,

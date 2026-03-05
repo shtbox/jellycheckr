@@ -12,7 +12,7 @@ export type PluginConfig = {
   ServerFallbackPauseBeforeStop: boolean;
   ServerFallbackPauseGraceSeconds: number;
   ServerFallbackSendMessageBeforePause: boolean;
-  ServerFallbackClientMessage: string;
+  ClientMessage: string;
   ServerFallbackDryRun: boolean;
   MinimumLogLevel: number;
   DebugLogging: boolean;

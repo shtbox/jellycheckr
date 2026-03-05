@@ -37,7 +37,7 @@ internal sealed class StubConfigService : IConfigService
             ServerFallbackPauseBeforeStop = _adminConfig.ServerFallbackPauseBeforeStop,
             ServerFallbackPauseGraceSeconds = _adminConfig.ServerFallbackPauseGraceSeconds,
             ServerFallbackSendMessageBeforePause = _adminConfig.ServerFallbackSendMessageBeforePause,
-            ServerFallbackClientMessage = _adminConfig.ServerFallbackClientMessage,
+            ClientMessage = _adminConfig.ClientMessage,
             ServerFallbackDryRun = _adminConfig.ServerFallbackDryRun,
             DebugLogging = _adminConfig.DebugLogging,
             DeveloperMode = _adminConfig.DeveloperMode,

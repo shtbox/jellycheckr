@@ -5,7 +5,8 @@ import type {
   WebClientRegisterResponse,
   WebClientUnregisterRequest
 } from "../../../../packages/contracts/ts/index";
-import type { AyswModule, WebClientBootstrapContext } from "../integration/jellyfinHooks";
+import type { WebClientBootstrapContext } from "../types/WebClientBootstrapContext";
+import type { AyswModule } from "../types/AyswModule";
 import type { PlayerAdapter } from "../player/playerAdapter";
 
 const HOST_RETRY_MS = 250;

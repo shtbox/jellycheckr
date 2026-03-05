@@ -191,12 +191,12 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
             return;
         }
 
-        if (config.ServerFallbackSendMessageBeforePause && !string.IsNullOrWhiteSpace(config.ServerFallbackClientMessage))
+        if (config.ServerFallbackSendMessageBeforePause && !string.IsNullOrWhiteSpace(config.ClientMessage))
         {
             var messageSent = await _commandDispatcher.TrySendMessageAsync(
                 state.SessionId,
                 state.UserId,
-                config.ServerFallbackClientMessage!,
+                config.ClientMessage!,
                 cancellationToken).ConfigureAwait(false);
             state.LastFallbackAction = "message";
             state.LastFallbackActionResult = messageSent ? "sent" : "failed";

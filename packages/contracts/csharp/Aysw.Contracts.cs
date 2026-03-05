@@ -45,8 +45,8 @@ public sealed record EffectiveConfigResponse
     public int ServerFallbackPauseGraceSeconds { get; set; }
     [JsonPropertyName("serverFallbackSendMessageBeforePause")]
     public bool ServerFallbackSendMessageBeforePause { get; set; }
-    [JsonPropertyName("serverFallbackClientMessage")]
-    public string? ServerFallbackClientMessage { get; set; }
+    [JsonPropertyName("clientMessage")]
+    public string? ClientMessage { get; set; }
     [JsonPropertyName("serverFallbackDryRun")]
     public bool ServerFallbackDryRun { get; set; }
     [JsonPropertyName("debugLogging")]

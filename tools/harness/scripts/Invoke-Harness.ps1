@@ -4,8 +4,8 @@
 
     [string]$Version = "",
     [int]$Port = 58096,
-    [string]$Username = "harness-admin",
-    [string]$Password = "harness-password",
+    [string]$Username = "harness",
+    [string]$Password = "harness",
     [string]$Token = "",
     [string]$ArtifactsDir = "",
     [switch]$SkipBuild

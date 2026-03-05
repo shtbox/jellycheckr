@@ -4,7 +4,18 @@ export interface ModalController {
   dispose(): void;
 }
 
-export function createModalController(): ModalController {
+type ModalControllerProps = {
+  message?: string | null | undefined;
+  continueButtonText?: string | null | undefined;
+  stopButtonText?: string | null | undefined;
+};
+
+export function createModalController(props: ModalControllerProps): ModalController {
+  const {
+    message = "Are you still watching? Playback will stop soon unless you resume.",
+    continueButtonText = "Continue watching",
+    stopButtonText = "Stop",
+  } = props;
   let root: HTMLDivElement | null = null;
   let intervalId: number | null = null;
   let keyHandler: ((event: KeyboardEvent) => void) | null = null;
@@ -20,11 +31,11 @@ export function createModalController(): ModalController {
 
     root.innerHTML = `
       <div class="jellycheckr-modal">
-        <h3>Continue watching?</h3>
+        <h3>${message}</h3>
         <p class="jellycheckr-countdown"></p>
         <div class="jellycheckr-actions">
-          <button class="jellycheckr-continue">Continue watching</button>
-          <button class="jellycheckr-stop">Stop</button>
+          <button class="jellycheckr-continue">${continueButtonText}</button>
+          <button class="jellycheckr-stop">${stopButtonText}</button>
         </div>
       </div>
     `;
@@ -56,11 +67,15 @@ export function createModalController(): ModalController {
 
     let secondsLeft = timeoutSeconds;
 
+    const formatTime = (seconds: number) => {
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return `${m}:${s.toString().padStart(2, "0")}`;
+    };
+
     const renderCountdown = () => {
-      countdownNode.innerHTML = `Stopping in <strong>${Math.max(
-        secondsLeft,
-        0
-      )}</strong>s`;
+      const seconds = Math.max(secondsLeft, 0);
+      countdownNode.innerHTML = `Stopping in <strong>${formatTime(seconds)}</strong>`;
     };
 
     renderCountdown();
@@ -86,9 +101,7 @@ export function createModalController(): ModalController {
 
       if (event.key === "ArrowRight") stopButton.focus();
       if (event.key === "ArrowLeft") continueButton.focus();
-
       if (event.key === "Escape" && !closed) onStop();
-
       if (
         event.key === "Enter" &&
         document.activeElement === stopButton &&

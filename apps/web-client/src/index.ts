@@ -132,13 +132,8 @@ function findBestVideoElement(): HTMLVideoElement | null {
   const videos = Array.from(document.querySelectorAll("video")).filter(
     (node): node is HTMLVideoElement => node instanceof HTMLVideoElement
   );
-
-  if (videos.length === 0) {
-    return null;
-  }
-
-  const visible = videos.find((video) => video.getClientRects().length > 0);
-  return visible ?? videos[0] ?? null;
+  const visible = videos.find((video) => video.isConnected && video.getClientRects().length > 0);
+  return visible ?? null;
 }
 
 function createDomPlayerAdapter(video: HTMLVideoElement, context: PlayerAdapterContext): PlayerAdapter {
