@@ -11,6 +11,9 @@ Jellycheckr is an "Are You Still Watching?" plugin for Jellyfin. It is built for
 - Includes a built-in configuration page inside the Jellyfin dashboard.
 
 ## Screenshots
+### Web Client Example
+
+<img width="auto" height="auto" alt="image" src="https://github.com/user-attachments/assets/5606b76f-225b-4fca-97e0-b1458db4b64d" />
 
 ### Built-In Configuration UI
 
