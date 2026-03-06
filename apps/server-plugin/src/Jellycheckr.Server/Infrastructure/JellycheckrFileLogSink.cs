@@ -7,8 +7,10 @@ namespace Jellycheckr.Server.Infrastructure;
 
 internal static class JellycheckrFileLogSink
 {
+    private const int LogRetentionDays = 30;
     private static readonly object WriteSync = new();
     private static DateOnly _activeDate;
+    private static DateOnly _lastRetentionSweepDate;
     private static string? _activeLogPath;
     private static bool _initialized;
 
@@ -28,7 +30,7 @@ internal static class JellycheckrFileLogSink
                 return;
             }
 
-            var renderedMessage = RenderMessage(messageTemplate, args);
+            var renderedMessage = JellycheckrLogSanitizer.SanitizeSingleLine(RenderMessage(messageTemplate, args));
             var builder = new StringBuilder(256);
             builder.Append(now.ToString("yyyy-MM-dd HH:mm:ss.fff zzz", CultureInfo.InvariantCulture));
             builder.Append(' ');
@@ -37,7 +39,7 @@ internal static class JellycheckrFileLogSink
             builder.AppendLine();
             if (exception is not null)
             {
-                builder.AppendLine(exception.ToString());
+                builder.AppendLine(JellycheckrLogSanitizer.SanitizeSingleLine(exception.ToString()));
             }
 
             lock (WriteSync)
@@ -88,6 +90,7 @@ internal static class JellycheckrFileLogSink
 
         _activeDate = utcDate;
         _activeLogPath = Path.Combine(logDirectory, $"jellycheckr_{now:yyyyMMdd}.log");
+        PruneOldLogFiles(logDirectory, now, utcDate);
         _initialized = false;
         return _activeLogPath;
     }
@@ -152,6 +155,44 @@ internal static class JellycheckrFileLogSink
 
         using var _ = new FileStream(logPath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite);
         _initialized = true;
+    }
+
+    private static void PruneOldLogFiles(string logDirectory, DateTimeOffset nowUtc, DateOnly utcDate)
+    {
+        if (_lastRetentionSweepDate == utcDate)
+        {
+            return;
+        }
+
+        var cutoffUtc = nowUtc.UtcDateTime.AddDays(-LogRetentionDays);
+        try
+        {
+            foreach (var filePath in Directory.EnumerateFiles(logDirectory, "jellycheckr_*.log"))
+            {
+                try
+                {
+                    var lastWriteUtc = File.GetLastWriteTimeUtc(filePath);
+                    if (lastWriteUtc >= cutoffUtc)
+                    {
+                        continue;
+                    }
+
+                    File.Delete(filePath);
+                }
+                catch
+                {
+                    // Ignore per-file retention failures.
+                }
+            }
+        }
+        catch
+        {
+            // Ignore retention sweep failures.
+        }
+        finally
+        {
+            _lastRetentionSweepDate = utcDate;
+        }
     }
 
     private static string RenderMessage(string template, object?[] args)
@@ -226,7 +267,7 @@ internal static class JellycheckrFileLogSink
 
     private static string FormatArg(object? value)
     {
-        return value switch
+        var formatted = value switch
         {
             null => "(null)",
             DateTimeOffset dto => dto.ToString("o", CultureInfo.InvariantCulture),
@@ -234,6 +275,8 @@ internal static class JellycheckrFileLogSink
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
             _ => value.ToString() ?? string.Empty
         };
+
+        return JellycheckrLogSanitizer.SanitizeSingleLine(formatted);
     }
 
     private static string GetLevelToken(LogLevel level)

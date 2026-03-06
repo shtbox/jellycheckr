@@ -2,7 +2,6 @@ import type { PluginConfig } from '../../types';
 import { CheckboxCard } from '../controls/CheckboxCard';
 import { NumberField } from '../controls/NumberField';
 import { SectionHeader } from '../controls/SectionHeader';
-import { TextField } from '../controls/TextField';
 import type { NumberHandlerFactory, UpdateFieldHandler } from './types';
 
 type FallbackSectionProps = {
@@ -84,14 +83,6 @@ export function FallbackSection(props: FallbackSectionProps) {
             onChange={(checked) => props.onUpdateField('ServerFallbackDryRun', checked)}
           />
         </div>
-
-        <TextField
-          id="jc_fb_message_text"
-          label="Fallback client message"
-          value={c.ServerFallbackClientMessage}
-          onInput={(e: any) => props.onUpdateField('ServerFallbackClientMessage', String(e.currentTarget.value ?? ''))}
-          help="Best-effort message sent before pause when messaging is enabled."
-        />
       </div>
     </section>
   );

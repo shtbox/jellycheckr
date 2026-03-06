@@ -1,0 +1,15 @@
+﻿services:
+  jellyfin-harness:
+    image: jellycheckr/harness:${JELLYFIN_VERSION}
+    hostname: ${HARNESS_SERVER_NAME}
+    build:
+      context: ../../..
+      dockerfile: tools/harness/docker/Dockerfile
+      args:
+        JELLYFIN_VERSION: ${JELLYFIN_VERSION}
+        DOTNET_TARGET_FRAMEWORK: ${DOTNET_TARGET_FRAMEWORK}
+        HARNESS_SERVER_ID: ${HARNESS_SERVER_ID}
+    ports:
+      - "${JELLYFIN_PORT}:8096"
+    environment:
+      - JELLYFIN_PublishedServerUrl=http://127.0.0.1:${JELLYFIN_PORT}

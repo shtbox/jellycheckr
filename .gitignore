@@ -27,3 +27,4 @@ Thumbs.db
 *.log
 tmp/
 apps/server-plugin/src/.vs/*
+tools/harness/artifacts/

@@ -17,7 +17,7 @@ Schema source of truth: `packages/contracts/aysw.schema.json`
 - `serverFallbackPauseBeforeStop` (bool)
 - `serverFallbackPauseGraceSeconds` (int, min 5)
 - `serverFallbackSendMessageBeforePause` (bool)
-- `serverFallbackClientMessage` (string)
+- `clientMessage` (string)
 - `serverFallbackDryRun` (bool)
 - `debugLogging` (bool)
 - `developerMode` (bool)
@@ -39,7 +39,7 @@ Schema source of truth: `packages/contracts/aysw.schema.json`
 - serverFallbackPauseBeforeStop: true
 - serverFallbackPauseGraceSeconds: 45
 - serverFallbackSendMessageBeforePause: true
-- serverFallbackClientMessage: "Are you still watching? Playback will stop soon unless you resume."
+- clientMessage: "Are you still watching? Playback will stop soon unless you resume."
 - serverFallbackDryRun: false
 - debugLogging: false
 - developerMode: false

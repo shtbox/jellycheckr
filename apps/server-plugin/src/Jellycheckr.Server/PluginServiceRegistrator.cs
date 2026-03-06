@@ -17,12 +17,14 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
             builder.AddFilter(PluginCategoryFilter));
 
         serviceCollection.AddSingleton<IClock, SystemClock>();
+        serviceCollection.AddSingleton<IAuthenticatedUserIdResolver, AuthenticatedUserIdResolver>();
         serviceCollection.AddSingleton<IConfigService, ConfigService>();
         serviceCollection.AddSingleton<ISessionStateStore, SessionStateStore>();
         serviceCollection.AddSingleton<ISessionStateObserver, SessionStateObserver>();
         serviceCollection.AddSingleton<IAckService, AckService>();
         serviceCollection.AddSingleton<IServerFallbackDecisionEngine, ServerFallbackDecisionEngine>();
         serviceCollection.AddSingleton<IServerFallbackSessionSnapshotProvider, ServerFallbackSessionSnapshotProvider>();
+        serviceCollection.AddSingleton<ISessionOwnershipValidator, SessionOwnershipValidator>();
         serviceCollection.AddSingleton<IWebClientSessionResolver, WebClientSessionResolver>();
         serviceCollection.AddSingleton<IWebClientRegistrationService, WebClientRegistrationService>();
         serviceCollection.AddSingleton<IJellyfinSessionCommandDispatcher, JellyfinSessionCommandDispatcher>();

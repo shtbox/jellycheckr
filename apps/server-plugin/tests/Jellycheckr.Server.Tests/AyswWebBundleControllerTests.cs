@@ -19,6 +19,7 @@ public sealed class AyswWebBundleControllerTests
         Assert.True(File.Exists(fileResult.FileName));
         Assert.Equal("application/javascript; charset=utf-8", fileResult.ContentType);
         Assert.Equal("public,max-age=3600", controller.Response.Headers.CacheControl.ToString());
+        Assert.Equal("nosniff", controller.Response.Headers.XContentTypeOptions.ToString());
     }
 
     [Fact]
@@ -33,6 +34,7 @@ public sealed class AyswWebBundleControllerTests
         Assert.True(File.Exists(fileResult.FileName));
         Assert.Equal("application/javascript; charset=utf-8", fileResult.ContentType);
         Assert.Equal("public,max-age=300", controller.Response.Headers.CacheControl.ToString());
+        Assert.Equal("nosniff", controller.Response.Headers.XContentTypeOptions.ToString());
     }
 
     [Fact]
@@ -47,6 +49,7 @@ public sealed class AyswWebBundleControllerTests
         Assert.True(File.Exists(fileResult.FileName));
         Assert.Equal("text/css; charset=utf-8", fileResult.ContentType);
         Assert.Equal("public,max-age=300", controller.Response.Headers.CacheControl.ToString());
+        Assert.Equal("nosniff", controller.Response.Headers.XContentTypeOptions.ToString());
     }
 
     [Fact]
@@ -61,6 +64,7 @@ public sealed class AyswWebBundleControllerTests
         Assert.True(File.Exists(fileResult.FileName));
         Assert.Equal("text/html; charset=utf-8", fileResult.ContentType);
         Assert.Equal("public,max-age=300", controller.Response.Headers.CacheControl.ToString());
+        Assert.Equal("nosniff", controller.Response.Headers.XContentTypeOptions.ToString());
     }
 
     private static AyswWebBundleController CreateController()

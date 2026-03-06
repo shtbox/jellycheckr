@@ -28,10 +28,10 @@ public sealed class ConfigService : IConfigService
         var config = GetAdminConfig();
         var effective = ToEffectiveResponse(config);
         _logger.LogJellycheckrTrace(
-            "Computed effective config for userId={UserId} adminConfig={@AdminConfig} effectiveConfig={@EffectiveConfig}",
-            userId,
-            config,
-            effective);
+            "Computed effective config for userId={UserId} enabled={Enabled} fallbackEnabled={FallbackEnabled}",
+            JellycheckrLogSanitizer.RedactIdentifier(userId),
+            effective.Enabled,
+            effective.EnableServerFallback);
         return effective;
     }
 
@@ -53,10 +53,11 @@ public sealed class ConfigService : IConfigService
         }
 
         _logger.LogJellycheckrTrace(
-            "Resolved admin config from plugin instance present={HasPluginInstance} migrated={Migrated} config={@Config}",
+            "Resolved admin config from plugin instance present={HasPluginInstance} migrated={Migrated} enabled={Enabled} fallbackEnabled={FallbackEnabled}",
             Plugin.Instance is not null,
             migrated,
-            resolved);
+            resolved.Enabled,
+            resolved.EnableServerFallback);
         return resolved;
     }
 
@@ -66,7 +67,11 @@ public sealed class ConfigService : IConfigService
         Validate(next);
         JellycheckrLogLevelState.Apply(next);
         _logger.LogJellycheckrInformation("[Jellycheckr] Updating admin configuration.");
-        _logger.LogJellycheckrTrace("Validated incoming admin config payload={@Config}", next);
+        _logger.LogJellycheckrTrace(
+            "Validated incoming admin config enabled={Enabled} fallbackEnabled={FallbackEnabled} developerMode={DeveloperMode}",
+            next.Enabled,
+            next.EnableServerFallback,
+            next.DeveloperMode);
         if (Plugin.Instance is null)
         {
             _logger.LogJellycheckrWarning("[Jellycheckr] Plugin instance was null during config update; returning validated payload only.");
@@ -75,13 +80,16 @@ public sealed class ConfigService : IConfigService
 
         var previous = Plugin.Instance.Configuration;
         _logger.LogJellycheckrTrace(
-            "Persisting admin config previous={@PreviousConfig} next={@NextConfig}",
-            previous,
-            next);
+            "Persisting admin config previousEnabled={PreviousEnabled} nextEnabled={NextEnabled}",
+            previous.Enabled,
+            next.Enabled);
         SetPluginConfiguration(Plugin.Instance, next);
         Plugin.Instance.SaveConfiguration();
         var saved = Plugin.Instance.Configuration;
-        _logger.LogJellycheckrTrace("Saved admin config persisted={@Config}", saved);
+        _logger.LogJellycheckrTrace(
+            "Saved admin config enabled={Enabled} fallbackEnabled={FallbackEnabled}",
+            saved.Enabled,
+            saved.EnableServerFallback);
         return saved;
     }
 
@@ -112,9 +120,9 @@ public sealed class ConfigService : IConfigService
             ServerFallbackPauseBeforeStop = config.ServerFallbackPauseBeforeStop,
             ServerFallbackPauseGraceSeconds = config.ServerFallbackPauseGraceSeconds,
             ServerFallbackSendMessageBeforePause = config.ServerFallbackSendMessageBeforePause,
-            ServerFallbackClientMessage = string.IsNullOrWhiteSpace(config.ServerFallbackClientMessage)
+            ClientMessage = string.IsNullOrWhiteSpace(config.ClientMessage)
                 ? "Are you still watching? Playback will stop soon unless you resume."
-                : config.ServerFallbackClientMessage.Trim(),
+                : config.ClientMessage.Trim(),
             ServerFallbackDryRun = config.ServerFallbackDryRun,
             DebugLogging = config.DebugLogging,
             DeveloperMode = config.DeveloperMode,

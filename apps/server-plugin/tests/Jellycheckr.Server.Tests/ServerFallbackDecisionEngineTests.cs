@@ -209,7 +209,7 @@ public sealed class ServerFallbackDecisionEngineTests
             ServerFallbackPauseBeforeStop = true,
             ServerFallbackPauseGraceSeconds = 45,
             ServerFallbackSendMessageBeforePause = true,
-            ServerFallbackClientMessage = "msg"
+            ClientMessage = "msg"
         };
     }
 }

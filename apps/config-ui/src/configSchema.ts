@@ -14,7 +14,7 @@ export const defaults: PluginConfig = {
   ServerFallbackPauseBeforeStop: true,
   ServerFallbackPauseGraceSeconds: 45,
   ServerFallbackSendMessageBeforePause: true,
-  ServerFallbackClientMessage: 'Are you still watching? Playback will stop soon unless you resume.',
+  ClientMessage: 'Are you still watching? Playback will stop soon unless you resume.',
   ServerFallbackDryRun: false,
   MinimumLogLevel: 3,
   DebugLogging: false,
@@ -140,7 +140,7 @@ export function normalize(raw: any): PluginConfig {
     ServerFallbackPauseBeforeStop: c.ServerFallbackPauseBeforeStop !== false && c.serverFallbackPauseBeforeStop !== false,
     ServerFallbackPauseGraceSeconds: clamp(parseInt(c.ServerFallbackPauseGraceSeconds ?? c.serverFallbackPauseGraceSeconds ?? defaults.ServerFallbackPauseGraceSeconds, 10), 5, 300),
     ServerFallbackSendMessageBeforePause: c.ServerFallbackSendMessageBeforePause !== false && c.serverFallbackSendMessageBeforePause !== false,
-    ServerFallbackClientMessage: String(c.ServerFallbackClientMessage ?? c.serverFallbackClientMessage ?? defaults.ServerFallbackClientMessage).trim() || defaults.ServerFallbackClientMessage,
+    ClientMessage: String(c.ClientMessage ?? c.clientMessage ?? defaults.ClientMessage).trim() || defaults.ClientMessage,
     ServerFallbackDryRun: c.ServerFallbackDryRun === true || c.serverFallbackDryRun === true,
     MinimumLogLevel: parseEnum(
       c.MinimumLogLevel ?? c.minimumLogLevel,

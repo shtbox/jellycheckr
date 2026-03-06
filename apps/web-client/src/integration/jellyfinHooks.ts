@@ -3,29 +3,25 @@ import { HttpApiClient } from "../api/client";
 import { debug, setDebugLogging, warn } from "../logging/logger";
 import type { PlayerAdapter } from "../player/playerAdapter";
 import {
+  createInitialHudSnapshot,
+  getPromptBlockers,
+  summarizeError,
+  withSafeDefaults
+} from "./jellyfinHooks.helpers";
+import {
   closePromptFromAck,
   createInitialState,
   openPrompt,
   registerInteraction,
   registerItemTransition,
-  shouldPrompt,
-  type AyswState
+  shouldPrompt
 } from "../state/ayswStateMachine";
-import {
-  createAyswDeveloperHud,
-  type AyswDeveloperHudSnapshot,
-  type HudTransportStatus
-} from "../ui/developerHud";
 import { createModalController } from "../ui/modal";
-
-export interface AyswModule {
-  dispose(): void;
-}
-
-export interface WebClientBootstrapContext {
-  config: EffectiveConfigResponse;
-  deviceId?: string | null;
-}
+import { createAyswDeveloperHud } from "../ui/developerHud";
+import type { AyswDeveloperHudSnapshot } from "../types/AyswDeveloperHudSnapshot";
+import type { AyswModule } from "../types/AyswModule";
+import type { HudTransportStatus } from "../types/HudTransportStatus";
+import type { WebClientBootstrapContext } from "../types/WebClientBootstrapContext";
 
 export async function mountAysw(player: PlayerAdapter, bootstrap?: WebClientBootstrapContext): Promise<AyswModule> {
   const api = new HttpApiClient();
@@ -43,59 +39,23 @@ export async function mountAysw(player: PlayerAdapter, bootstrap?: WebClientBoot
   setDebugLogging(config.debugLogging || config.developerMode);
   const resolveSessionId = (): string => player.getSessionId();
   const resolveDeviceId = (): string | undefined => bootstrap?.deviceId ?? player.getDeviceId?.() ?? undefined;
-  const modal = createModalController();
+  const modal = createModalController({
+    message: config.clientMessage
+  });
   let state = createInitialState(Date.now());
   let lastMouseMoveTs = 0;
   let modalVisible = false;
 
   const devHud = config.developerMode ? createAyswDeveloperHud() : null;
   const hudSnapshot: AyswDeveloperHudSnapshot | null = devHud
-    ? {
-        moduleState: "mounting",
+    ? createInitialHudSnapshot({
         sessionId: resolveSessionId(),
         mountedAtTs: Date.now(),
         config,
         currentItem: player.getCurrentItem(),
         state,
-        modalVisible,
-        lastInteraction: {
-          eventType: null,
-          atTs: null,
-          itemId: null,
-          sendStatus: "idle",
-          sendAtTs: null,
-          sendError: null
-        },
-        lastEvaluation: {
-          trigger: null,
-          atTs: null,
-          promptEligible: null,
-          decision: null,
-          blockers: [],
-          note: null
-        },
-        lastPrompt: {
-          shownAtTs: null,
-          shownSendStatus: "idle",
-          shownSendAtTs: null,
-          shownSendError: null,
-          closedAtTs: null,
-          closeReason: null
-        },
-        lastAck: {
-          ackType: null,
-          status: "idle",
-          atTs: null,
-          error: null
-        },
-        lastServerCall: {
-          kind: null,
-          status: "idle",
-          atTs: null,
-          note: null,
-          error: null
-        }
-      }
+        modalVisible
+      })
     : null;
 
   const renderHud = (): void => {
@@ -145,19 +105,7 @@ export async function mountAysw(player: PlayerAdapter, bootstrap?: WebClientBoot
 
   debug("Mounting AYSW module", {
     sessionId: resolveSessionId(),
-    config: {
-      enabled: config.enabled,
-      enableEpisodeCheck: config.enableEpisodeCheck,
-      enableTimerCheck: config.enableTimerCheck,
-      enableServerFallback: config.enableServerFallback,
-      episodeThreshold: config.episodeThreshold,
-      minutesThreshold: config.minutesThreshold,
-      interactionQuietSeconds: config.interactionQuietSeconds,
-      promptTimeoutSeconds: config.promptTimeoutSeconds,
-      cooldownMinutes: config.cooldownMinutes,
-      debugLogging: config.debugLogging,
-      developerMode: config.developerMode
-    }
+    config
   });
 
   renderHud();
@@ -266,15 +214,7 @@ export async function mountAysw(player: PlayerAdapter, bootstrap?: WebClientBoot
       nowIso: new Date(now).toISOString(),
       currentItem,
       promptEligible,
-      state: {
-        promptOpen: state.promptOpen,
-        promptDeadlineTs: state.promptDeadlineTs,
-        lastInteractionTs: state.lastInteractionTs,
-        lastPromptResetTs: state.lastPromptResetTs,
-        nextEligiblePromptTs: state.nextEligiblePromptTs,
-        episodeTransitionsSinceAck: state.episodeTransitionsSinceAck,
-        lastItem: state.lastItem
-      },
+      state,
       thresholds: {
         episodeThresholdReached,
         timeThresholdReached,
@@ -344,114 +284,75 @@ export async function mountAysw(player: PlayerAdapter, bootstrap?: WebClientBoot
     renderHud();
     pushHudEvent(`prompt visible (${trigger})`);
 
-    modal.show(
-      async () => {
-        debug("Prompt action selected", { action: "continue" });
-
-        if (hudSnapshot) {
-          hudSnapshot.lastAck.ackType = "continue";
-          hudSnapshot.lastAck.status = "pending";
-          hudSnapshot.lastAck.atTs = Date.now();
-          hudSnapshot.lastAck.error = null;
-        }
-        setHudServerCall("ack", "pending", "continue");
-        renderHud();
-        pushHudEvent("prompt action continue");
-
-        const ack: AckRequest = {
-          ackType: "continue",
-          clientTimeUtc: new Date().toISOString(),
-          reason: "user_clicked_continue",
-          itemId: player.getCurrentItem()?.id,
-          clientType: "web",
-          deviceId: resolveDeviceId()
-        };
-        try {
-          await api.sendAck(resolveSessionId(), ack);
-          if (hudSnapshot) {
-            hudSnapshot.lastAck.status = "ok";
-            hudSnapshot.lastAck.atTs = Date.now();
-          }
-          setHudServerCall("ack", "ok", ack.ackType);
-          renderHud();
-          pushHudEvent("ack sent (continue)");
-          debug("Sent ack", { ackType: ack.ackType });
-        } catch (err) {
-          if (hudSnapshot) {
-            hudSnapshot.lastAck.status = "error";
-            hudSnapshot.lastAck.atTs = Date.now();
-            hudSnapshot.lastAck.error = summarizeError(err);
-          }
-          setHudServerCall("ack", "error", ack.ackType, err);
-          renderHud();
-          pushHudEvent("ack failed (continue)");
-          debug("Failed to send ack (non-fatal)", { ackType: ack.ackType, err });
-        }
-
-        state = closePromptFromAck(state, Date.now(), config.cooldownMinutes);
-        modal.close();
-        modalVisible = false;
-        setHudPromptClosed("continue");
-        renderHud();
-        pushHudEvent("prompt closed (continue)");
-      },
-      async () => {
-        debug("Prompt action selected", { action: "stop" });
+    const handlePromptAction = async (ackType: AckRequest["ackType"], reason: string): Promise<void> => {
+      debug("Prompt action selected", { action: ackType });
+      if (ackType === "stop") {
         player.stopPlayback();
+      }
 
+      if (hudSnapshot) {
+        hudSnapshot.lastAck.ackType = ackType;
+        hudSnapshot.lastAck.status = "pending";
+        hudSnapshot.lastAck.atTs = Date.now();
+        hudSnapshot.lastAck.error = null;
+      }
+      setHudServerCall("ack", "pending", ackType);
+      renderHud();
+      pushHudEvent(`prompt action ${ackType}`);
+
+      const ack: AckRequest = {
+        ackType,
+        clientTimeUtc: new Date().toISOString(),
+        reason,
+        itemId: player.getCurrentItem()?.id,
+        clientType: "web",
+        deviceId: resolveDeviceId()
+      };
+
+      try {
+        await api.sendAck(resolveSessionId(), ack);
         if (hudSnapshot) {
-          hudSnapshot.lastAck.ackType = "stop";
-          hudSnapshot.lastAck.status = "pending";
+          hudSnapshot.lastAck.status = "ok";
           hudSnapshot.lastAck.atTs = Date.now();
-          hudSnapshot.lastAck.error = null;
         }
-        setHudServerCall("ack", "pending", "stop");
+        setHudServerCall("ack", "ok", ack.ackType);
         renderHud();
-        pushHudEvent("prompt action stop");
-
-        const ack: AckRequest = {
-          ackType: "stop",
-          clientTimeUtc: new Date().toISOString(),
-          reason: "timeout_or_user_stop",
-          itemId: player.getCurrentItem()?.id,
-          clientType: "web",
-          deviceId: resolveDeviceId()
-        };
-        try {
-          await api.sendAck(resolveSessionId(), ack);
-          if (hudSnapshot) {
-            hudSnapshot.lastAck.status = "ok";
-            hudSnapshot.lastAck.atTs = Date.now();
-          }
-          setHudServerCall("ack", "ok", ack.ackType);
-          renderHud();
-          pushHudEvent("ack sent (stop)");
-          debug("Sent ack", { ackType: ack.ackType });
-        } catch (err) {
-          if (hudSnapshot) {
-            hudSnapshot.lastAck.status = "error";
-            hudSnapshot.lastAck.atTs = Date.now();
-            hudSnapshot.lastAck.error = summarizeError(err);
-          }
-          setHudServerCall("ack", "error", ack.ackType, err);
-          renderHud();
-          pushHudEvent("ack failed (stop)");
-          debug("Failed to send ack (non-fatal)", { ackType: ack.ackType, err });
+        pushHudEvent(`ack sent (${ackType})`);
+        debug("Sent ack", { ackType: ack.ackType });
+      } catch (err) {
+        if (hudSnapshot) {
+          hudSnapshot.lastAck.status = "error";
+          hudSnapshot.lastAck.atTs = Date.now();
+          hudSnapshot.lastAck.error = summarizeError(err);
         }
-
-        state = closePromptFromAck(state, Date.now(), config.cooldownMinutes);
-        modal.close();
-        modalVisible = false;
-        setHudPromptClosed("stop");
+        setHudServerCall("ack", "error", ack.ackType, err);
         renderHud();
-        pushHudEvent("prompt closed (stop)");
-        try {
-          player.exitPlaybackView?.();
-        } catch (err) {
-          pushHudEvent("exit playback failed");
-          debug("Failed to exit playback view after stop action (non-fatal)", { err });
-        }
-      },
+        pushHudEvent(`ack failed (${ackType})`);
+        debug("Failed to send ack (non-fatal)", { ackType: ack.ackType, err });
+      }
+
+      state = closePromptFromAck(state, Date.now(), config.cooldownMinutes);
+      modal.close();
+      modalVisible = false;
+      setHudPromptClosed(ackType);
+      renderHud();
+      pushHudEvent(`prompt closed (${ackType})`);
+
+      if (ackType !== "stop") {
+        return;
+      }
+
+      try {
+        player.exitPlaybackView?.();
+      } catch (err) {
+        pushHudEvent("exit playback failed");
+        debug("Failed to exit playback view after stop action (non-fatal)", { err });
+      }
+    };
+
+    modal.show(
+      async () => handlePromptAction("continue", "user_clicked_continue"),
+      async () => handlePromptAction("stop", "timeout_or_user_stop"),
       config.promptTimeoutSeconds
     );
   };
@@ -526,101 +427,3 @@ export async function mountAysw(player: PlayerAdapter, bootstrap?: WebClientBoot
   };
 }
 
-interface PromptThresholdFlags {
-  episodeThresholdReached: boolean;
-  timeThresholdReached: boolean;
-  developerThresholdReached: boolean;
-}
-
-function getPromptBlockers(
-  state: AyswState,
-  now: number,
-  config: EffectiveConfigResponse,
-  flags: PromptThresholdFlags
-): string[] {
-  const blockers: string[] = [];
-
-  if (!config.enabled) {
-    blockers.push("disabled");
-  }
-  if (state.promptOpen) {
-    blockers.push("prompt_open");
-  }
-  if (state.nextEligiblePromptTs > now) {
-    blockers.push("cooldown");
-  }
-  if (!flags.episodeThresholdReached && !flags.timeThresholdReached && !flags.developerThresholdReached) {
-    blockers.push("thresholds_not_met");
-  }
-
-  return blockers;
-}
-
-function summarizeError(err: unknown): string {
-  if (err instanceof Error) {
-    return err.message;
-  }
-  if (typeof err === "string") {
-    return err;
-  }
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return String(err);
-  }
-}
-
-function withSafeDefaults(config: EffectiveConfigResponse): EffectiveConfigResponse {
-  const raw = config as unknown as Record<string, unknown>;
-  const pick = <T>(camelKey: string, pascalKey: string, fallback: T): T => {
-    const camelValue = raw[camelKey];
-    if (camelValue !== undefined && camelValue !== null) {
-      return camelValue as T;
-    }
-
-    const pascalValue = raw[pascalKey];
-    if (pascalValue !== undefined && pascalValue !== null) {
-      return pascalValue as T;
-    }
-
-    return fallback;
-  };
-
-  const pickNumber = (camelKey: string, pascalKey: string, fallback: number): number => {
-    const value = Number(pick(camelKey, pascalKey, fallback));
-    return Number.isFinite(value) ? value : fallback;
-  };
-
-  const legacyEnforcementMode = String(pick("enforcementMode", "EnforcementMode", "WebOnly"));
-
-  return {
-    enabled: pick("enabled", "Enabled", true),
-    enableEpisodeCheck: Boolean(pick("enableEpisodeCheck", "EnableEpisodeCheck", true)),
-    enableTimerCheck: Boolean(pick("enableTimerCheck", "EnableTimerCheck", true)),
-    enableServerFallback: Boolean(
-      pick("enableServerFallback", "EnableServerFallback", legacyEnforcementMode === "ServerFallback")
-    ),
-    episodeThreshold: Math.max(pickNumber("episodeThreshold", "EpisodeThreshold", 3), 1),
-    minutesThreshold: Math.max(pickNumber("minutesThreshold", "MinutesThreshold", 120), 1),
-    interactionQuietSeconds: Math.max(pickNumber("interactionQuietSeconds", "InteractionQuietSeconds", 45), 5),
-    promptTimeoutSeconds: Math.max(pickNumber("promptTimeoutSeconds", "PromptTimeoutSeconds", 60), 10),
-    cooldownMinutes: Math.max(pickNumber("cooldownMinutes", "CooldownMinutes", 30), 0),
-    serverFallbackInactivityMinutes: Math.max(pickNumber("serverFallbackInactivityMinutes", "ServerFallbackInactivityMinutes", 30), 1),
-    serverFallbackPauseBeforeStop: Boolean(pick("serverFallbackPauseBeforeStop", "ServerFallbackPauseBeforeStop", true)),
-    serverFallbackPauseGraceSeconds: Math.max(pickNumber("serverFallbackPauseGraceSeconds", "ServerFallbackPauseGraceSeconds", 45), 5),
-    serverFallbackSendMessageBeforePause: Boolean(pick("serverFallbackSendMessageBeforePause", "ServerFallbackSendMessageBeforePause", true)),
-    serverFallbackClientMessage: String(
-      pick(
-        "serverFallbackClientMessage",
-        "ServerFallbackClientMessage",
-        "Are you still watching? Playback will stop soon unless you resume."
-      ) ?? "Are you still watching? Playback will stop soon unless you resume."
-    ),
-    serverFallbackDryRun: Boolean(pick("serverFallbackDryRun", "ServerFallbackDryRun", false)),
-    debugLogging: Boolean(pick("debugLogging", "DebugLogging", false)),
-    developerMode: Boolean(pick("developerMode", "DeveloperMode", false)),
-    developerPromptAfterSeconds: Math.max(pickNumber("developerPromptAfterSeconds", "DeveloperPromptAfterSeconds", 15), 1),
-    version: Math.max(pickNumber("version", "Version", pickNumber("schemaVersion", "SchemaVersion", 1)), 1),
-    schemaVersion: Math.max(pickNumber("schemaVersion", "SchemaVersion", 1), 1)
-  };
-}

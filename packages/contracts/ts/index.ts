@@ -15,7 +15,7 @@ export interface EffectiveConfigResponse {
   serverFallbackPauseBeforeStop: boolean;
   serverFallbackPauseGraceSeconds: number;
   serverFallbackSendMessageBeforePause: boolean;
-  serverFallbackClientMessage?: string | null;
+  clientMessage?: string | null;
   serverFallbackDryRun: boolean;
   debugLogging: boolean;
   developerMode: boolean;

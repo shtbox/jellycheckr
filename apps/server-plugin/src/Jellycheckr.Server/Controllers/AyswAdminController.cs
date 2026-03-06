@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Jellycheckr.Server.Models;
 using Jellycheckr.Server.Infrastructure;
 using Jellycheckr.Server.Services;
@@ -35,9 +36,10 @@ public sealed class AyswAdminController : ControllerBase
         {
             var config = _configService.GetAdminConfig();
             _logger.LogJellycheckrTrace(
-                "GET /admin/config user={User} config={@Config}",
+                "GET /admin/config user={User} enabled={Enabled} fallbackEnabled={FallbackEnabled}",
                 User.Identity?.Name ?? "(unknown)",
-                config);
+                config.Enabled,
+                config.EnableServerFallback);
             return Ok(config);
         }
         catch (Exception ex)
@@ -59,10 +61,12 @@ public sealed class AyswAdminController : ControllerBase
         try
         {
             _logger.LogJellycheckrTrace("[Jellycheckr] Admin config update requested by {User}.", User.Identity?.Name ?? "(unknown)");
-            _logger.LogJellycheckrTrace("PUT /admin/config payload={@Config}", config);
 
             var updated = _configService.UpdateAdminConfig(config);
-            _logger.LogJellycheckrTrace("PUT /admin/config persistedConfig={@Config}", updated);
+            _logger.LogJellycheckrTrace(
+                "PUT /admin/config updated enabled={Enabled} fallbackEnabled={FallbackEnabled}",
+                updated.Enabled,
+                updated.EnableServerFallback);
             return Ok(updated);
         }
         catch (ArgumentOutOfRangeException ex)
@@ -80,7 +84,8 @@ public sealed class AyswAdminController : ControllerBase
     private bool IsAdmin()
     {
         return User.IsInRole("Administrator")
-               || User.Claims.Any(c => c.Type.EndsWith("role", StringComparison.OrdinalIgnoreCase)
+               || User.Claims.Any(c => (string.Equals(c.Type, ClaimTypes.Role, StringComparison.Ordinal)
+                                        || string.Equals(c.Type, "role", StringComparison.OrdinalIgnoreCase))
                                        && c.Value.Equals("Administrator", StringComparison.OrdinalIgnoreCase));
     }
 }

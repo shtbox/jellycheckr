@@ -26,7 +26,7 @@ public class PluginConfig : BasePluginConfiguration
     public bool ServerFallbackPauseBeforeStop { get; set; } = true;
     public int ServerFallbackPauseGraceSeconds { get; set; } = 45;
     public bool ServerFallbackSendMessageBeforePause { get; set; } = true;
-    public string ServerFallbackClientMessage { get; set; } = "Are you still watching? Playback will stop soon unless you resume.";
+    public string ClientMessage { get; set; } = "Are you still watching? Playback will stop soon unless you resume.";
     public bool ServerFallbackDryRun { get; set; }
     public LogLevel MinimumLogLevel { get; set; } = LogLevel.Warning;
     public bool DebugLogging { get; set; }

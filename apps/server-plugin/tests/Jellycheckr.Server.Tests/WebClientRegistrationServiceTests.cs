@@ -79,10 +79,12 @@ public sealed class WebClientRegistrationServiceTests
     private static WebClientRegistrationService CreateService(
         SessionStateStore store,
         StubSessionSnapshotProvider snapshots,
-        FakeClock clock)
+        FakeClock clock,
+        ISessionOwnershipValidator? ownershipValidator = null)
     {
         return new WebClientRegistrationService(
             store,
+            ownershipValidator ?? new StubSessionOwnershipValidator(),
             new StubConfigService(),
             new WebClientSessionResolver(snapshots, NullLogger<WebClientSessionResolver>.Instance),
             new SessionStateObserver(NullLogger<SessionStateObserver>.Instance),
@@ -104,5 +106,45 @@ public sealed class WebClientRegistrationServiceTests
             IsActive = true,
             LastActivityUtc = DateTimeOffset.Parse("2026-03-02T09:00:00Z")
         };
+    }
+
+    [Fact]
+    public void Register_RejectsDeviceWhenOwnedByAnotherUser()
+    {
+        var store = new SessionStateStore(NullLogger<SessionStateStore>.Instance);
+        var snapshots = new StubSessionSnapshotProvider(
+            new[]
+            {
+                CreateSnapshot("s1", "u1", "dev-1")
+            });
+        var service = CreateService(store, snapshots, new FakeClock(DateTimeOffset.Parse("2026-03-02T09:00:00Z")));
+
+        var response = service.Register("u2", new WebClientRegisterRequest { DeviceId = "dev-1" });
+
+        Assert.False(response.Registered);
+        Assert.Equal("session_unresolved", response.Reason);
+        Assert.Empty(store.Snapshot());
+    }
+
+    [Fact]
+    public void Unregister_ThrowsForSessionOwnedByAnotherUser()
+    {
+        var now = DateTimeOffset.Parse("2026-03-02T09:00:00Z");
+        var store = new SessionStateStore(NullLogger<SessionStateStore>.Instance);
+        var snapshots = new StubSessionSnapshotProvider(
+            new[]
+            {
+                CreateSnapshot("s1", "u1", "dev-1")
+            });
+        var ownershipValidator = new SessionOwnershipValidator(
+            snapshots,
+            store,
+            NullLogger<SessionOwnershipValidator>.Instance);
+        var service = CreateService(store, snapshots, new FakeClock(now), ownershipValidator);
+
+        _ = service.Register("u1", new WebClientRegisterRequest { DeviceId = "dev-1" });
+
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            service.Unregister("u2", new WebClientUnregisterRequest { SessionId = "s1" }));
     }
 }

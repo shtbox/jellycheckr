@@ -48,6 +48,7 @@ public sealed class AyswWebBundleController : ControllerBase
         }
 
         Response.Headers.CacheControl = asset.CacheControl;
+        Response.Headers.XContentTypeOptions = "nosniff";
         return PhysicalFile(absolutePath, asset.ContentType);
     }
 }

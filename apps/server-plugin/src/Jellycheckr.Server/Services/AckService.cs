@@ -7,28 +7,31 @@ namespace Jellycheckr.Server.Services;
 
 public interface IAckService
 {
-    AckResponse HandleAck(string sessionId, AckRequest request, EffectiveConfigResponse config);
-    InteractionResponse HandleInteraction(string sessionId, InteractionRequest request);
-    void MarkPromptActive(string sessionId, DateTimeOffset promptDeadlineUtc, string? clientType);
+    AckResponse HandleAck(string sessionId, string? userId, AckRequest request, EffectiveConfigResponse config);
+    InteractionResponse HandleInteraction(string sessionId, string? userId, InteractionRequest request);
+    void MarkPromptActive(string sessionId, string? userId, DateTimeOffset promptDeadlineUtc, string? clientType);
 }
 
 public sealed class AckService : IAckService
 {
     private readonly ISessionStateStore _sessionStateStore;
+    private readonly ISessionOwnershipValidator _sessionOwnershipValidator;
     private readonly IClock _clock;
     private readonly ILogger<AckService> _logger;
 
     public AckService(
         ISessionStateStore sessionStateStore,
+        ISessionOwnershipValidator sessionOwnershipValidator,
         IClock clock,
         ILogger<AckService> logger)
     {
         _sessionStateStore = sessionStateStore;
+        _sessionOwnershipValidator = sessionOwnershipValidator;
         _clock = clock;
         _logger = logger;
     }
 
-    public AckResponse HandleAck(string sessionId, AckRequest request, EffectiveConfigResponse config)
+    public AckResponse HandleAck(string sessionId, string? userId, AckRequest request, EffectiveConfigResponse config)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
         {
@@ -38,21 +41,33 @@ public sealed class AckService : IAckService
 
         if (request is null)
         {
-            _logger.LogJellycheckrWarning("[Jellycheckr] Rejecting ack due to missing request body for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrWarning(
+                "[Jellycheckr] Rejecting ack due to missing request body for session={SessionId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId));
             throw new ArgumentNullException(nameof(request));
         }
 
         if (string.IsNullOrWhiteSpace(request.AckType))
         {
-            _logger.LogJellycheckrWarning("[Jellycheckr] Rejecting ack due to missing ack type for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrWarning(
+                "[Jellycheckr] Rejecting ack due to missing ack type for session={SessionId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId));
             throw new ArgumentException("Ack type is required.", nameof(request.AckType));
+        }
+
+        if (!_sessionOwnershipValidator.CanMutateSession(userId, sessionId))
+        {
+            _logger.LogJellycheckrWarning(
+                "[Jellycheckr] Rejecting ack due to ownership mismatch session={SessionId} userId={UserId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId),
+                JellycheckrLogSanitizer.RedactIdentifier(userId));
+            throw new UnauthorizedAccessException("Session is not owned by the current user.");
         }
 
         try
         {
             var now = _clock.UtcNow;
             var state = _sessionStateStore.GetOrCreate(sessionId);
-            var stateBefore = SnapshotState(state);
             var resetApplied = request.AckType.Equals("continue", StringComparison.OrdinalIgnoreCase)
                 || request.AckType.Equals("stop", StringComparison.OrdinalIgnoreCase);
 
@@ -78,18 +93,17 @@ public sealed class AckService : IAckService
 
             _logger.LogJellycheckrInformation(
                 "[Jellycheckr] AYSW ack: session={SessionId} ackType={AckType} reason={Reason} reset={ResetApplied}",
-                sessionId,
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId),
                 request.AckType,
-                request.Reason,
+                string.IsNullOrWhiteSpace(request.Reason) ? "(none)" : "provided",
                 resetApplied);
 
             _logger.LogJellycheckrTrace(
-                "Ack processed session={SessionId} request={@Request} nowUtc={NowUtc} stateBefore={@StateBefore} stateAfter={@StateAfter}",
-                sessionId,
-                request,
-                now,
-                stateBefore,
-                SnapshotState(state));
+                "Ack processed session={SessionId} ackType={AckType} reset={ResetApplied} nextEligiblePromptUtc={NextEligiblePromptUtc}",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId),
+                request.AckType,
+                resetApplied,
+                state.NextEligiblePromptUtc);
 
             return new AckResponse
             {
@@ -99,17 +113,28 @@ public sealed class AckService : IAckService
         }
         catch (ArgumentException ex)
         {
-            _logger.LogJellycheckrWarning(ex, "[Jellycheckr] Ack request validation failed for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrWarning(
+                ex,
+                "[Jellycheckr] Ack request validation failed for session={SessionId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId));
+            throw;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogJellycheckrWarning(ex, "[Jellycheckr] Ack request rejected by session ownership policy.");
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogJellycheckrError(ex, "[Jellycheckr] Unhandled error while processing ack for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrError(
+                ex,
+                "[Jellycheckr] Unhandled error while processing ack for session={SessionId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId));
             throw;
         }
     }
 
-    public InteractionResponse HandleInteraction(string sessionId, InteractionRequest request)
+    public InteractionResponse HandleInteraction(string sessionId, string? userId, InteractionRequest request)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
         {
@@ -119,32 +144,42 @@ public sealed class AckService : IAckService
 
         if (request is null)
         {
-            _logger.LogJellycheckrWarning("[Jellycheckr] Rejecting interaction due to missing request body for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrWarning(
+                "[Jellycheckr] Rejecting interaction due to missing request body for session={SessionId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId));
             throw new ArgumentNullException(nameof(request));
         }
 
         if (string.IsNullOrWhiteSpace(request.EventType))
         {
-            _logger.LogJellycheckrWarning("[Jellycheckr] Rejecting interaction due to missing event type for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrWarning(
+                "[Jellycheckr] Rejecting interaction due to missing event type for session={SessionId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId));
             throw new ArgumentException("Event type is required.", nameof(request.EventType));
+        }
+
+        if (!_sessionOwnershipValidator.CanMutateSession(userId, sessionId))
+        {
+            _logger.LogJellycheckrWarning(
+                "[Jellycheckr] Rejecting interaction due to ownership mismatch session={SessionId} userId={UserId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId),
+                JellycheckrLogSanitizer.RedactIdentifier(userId));
+            throw new UnauthorizedAccessException("Session is not owned by the current user.");
         }
 
         try
         {
             var now = _clock.UtcNow;
             var state = _sessionStateStore.GetOrCreate(sessionId);
-            var stateBefore = SnapshotState(state);
             state.LastInteractionUtc = now;
             state.LastItemId = request.ItemId ?? state.LastItemId;
             RefreshWebUiRegistrationLeaseIfApplicable(state, request.ClientType, now);
 
             _logger.LogJellycheckrTrace(
-                "Interaction processed session={SessionId} request={@Request} nowUtc={NowUtc} stateBefore={@StateBefore} stateAfter={@StateAfter}",
-                sessionId,
-                request,
-                now,
-                stateBefore,
-                SnapshotState(state));
+                "Interaction processed session={SessionId} eventType={EventType} nowUtc={NowUtc}",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId),
+                request.EventType,
+                now);
 
             return new InteractionResponse
             {
@@ -154,17 +189,28 @@ public sealed class AckService : IAckService
         }
         catch (ArgumentException ex)
         {
-            _logger.LogJellycheckrWarning(ex, "[Jellycheckr] Interaction request validation failed for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrWarning(
+                ex,
+                "[Jellycheckr] Interaction request validation failed for session={SessionId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId));
+            throw;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogJellycheckrWarning(ex, "[Jellycheckr] Interaction request rejected by session ownership policy.");
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogJellycheckrError(ex, "[Jellycheckr] Unhandled error while processing interaction for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrError(
+                ex,
+                "[Jellycheckr] Unhandled error while processing interaction for session={SessionId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId));
             throw;
         }
     }
 
-    public void MarkPromptActive(string sessionId, DateTimeOffset promptDeadlineUtc, string? clientType)
+    public void MarkPromptActive(string sessionId, string? userId, DateTimeOffset promptDeadlineUtc, string? clientType)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
         {
@@ -174,36 +220,57 @@ public sealed class AckService : IAckService
 
         if (promptDeadlineUtc <= DateTimeOffset.MinValue)
         {
-            _logger.LogJellycheckrWarning("[Jellycheckr] Rejecting prompt-shown due to invalid deadline for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrWarning(
+                "[Jellycheckr] Rejecting prompt-shown due to invalid deadline for session={SessionId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId));
             throw new ArgumentOutOfRangeException(nameof(promptDeadlineUtc), "Prompt deadline must be a valid UTC timestamp.");
+        }
+
+        if (!_sessionOwnershipValidator.CanMutateSession(userId, sessionId))
+        {
+            _logger.LogJellycheckrWarning(
+                "[Jellycheckr] Rejecting prompt-shown due to ownership mismatch session={SessionId} userId={UserId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId),
+                JellycheckrLogSanitizer.RedactIdentifier(userId));
+            throw new UnauthorizedAccessException("Session is not owned by the current user.");
         }
 
         try
         {
             var now = _clock.UtcNow;
             var state = _sessionStateStore.GetOrCreate(sessionId);
-            var stateBefore = SnapshotState(state);
             state.PromptActive = true;
             state.PromptDeadlineUtc = promptDeadlineUtc;
             RefreshWebUiRegistrationLeaseIfApplicable(state, clientType, now);
             _logger.LogJellycheckrInformation(
                 "[Jellycheckr] Prompt marked active for session={SessionId} deadlineUtc={PromptDeadlineUtc}.",
-                sessionId,
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId),
                 promptDeadlineUtc);
             _logger.LogJellycheckrTrace(
-                "Prompt active state updated session={SessionId} stateBefore={@StateBefore} stateAfter={@StateAfter}",
-                sessionId,
-                stateBefore,
-                SnapshotState(state));
+                "Prompt active state updated session={SessionId} deadlineUtc={PromptDeadlineUtc} clientType={ClientType}",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId),
+                promptDeadlineUtc,
+                clientType ?? "(none)");
         }
         catch (ArgumentException ex)
         {
-            _logger.LogJellycheckrWarning(ex, "[Jellycheckr] Prompt-shown validation failed for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrWarning(
+                ex,
+                "[Jellycheckr] Prompt-shown validation failed for session={SessionId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId));
+            throw;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogJellycheckrWarning(ex, "[Jellycheckr] Prompt-shown request rejected by session ownership policy.");
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogJellycheckrError(ex, "[Jellycheckr] Unhandled error while marking prompt active for session={SessionId}.", sessionId);
+            _logger.LogJellycheckrError(
+                ex,
+                "[Jellycheckr] Unhandled error while marking prompt active for session={SessionId}.",
+                JellycheckrLogSanitizer.RedactIdentifier(sessionId));
             throw;
         }
     }
@@ -216,48 +283,6 @@ public sealed class AckService : IAckService
         }
 
         WebUiRegistrationLeasePolicy.ApplyRegistration(state, nowUtc);
-    }
-
-    private static object SnapshotState(SessionState state)
-    {
-        return new
-        {
-            state.SessionId,
-            state.LastAckUtc,
-            state.LastInteractionUtc,
-            state.PromptActive,
-            state.PromptDeadlineUtc,
-            state.LastItemId,
-            state.ConsecutiveEpisodesSinceAck,
-            state.NextEligiblePromptUtc,
-            state.UserId,
-            state.UserName,
-            state.ClientName,
-            state.DeviceName,
-            state.DeviceId,
-            state.CurrentItemId,
-            state.CurrentItemName,
-            state.PreviousItemId,
-            state.LastSeenUtc,
-            state.LastObservedPositionTicks,
-            state.LastPlaybackProgressObservedUtc,
-            state.LastObservedLastActivityDateUtc,
-            state.LastObservedLastPlaybackCheckInUtc,
-            state.LastObservedLastPausedDateUtc,
-            state.LastInferredActivityUtc,
-            state.ServerFallbackEpisodeTransitionsSinceReset,
-            state.ServerFallbackPlaybackTicksSinceReset,
-            state.IsPaused,
-            state.FallbackPhase,
-            state.PauseIssuedUtc,
-            state.PauseGraceDeadlineUtc,
-            state.LastFallbackAction,
-            state.LastFallbackActionResult,
-            state.LastFallbackDecisionKey,
-            state.LastFallbackDecisionLoggedUtc,
-            state.WebUiRegistered,
-            state.WebUiRegistrationLeaseUtc
-        };
     }
 }
 
