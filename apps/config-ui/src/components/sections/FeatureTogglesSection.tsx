@@ -17,7 +17,7 @@ export function FeatureTogglesSection(props: FeatureTogglesSectionProps) {
   return (
     <section class={sectionClass}>
       <SectionHeader
-        title="Main Settings"
+        title="Main"
         description="Enable core behavior first, then choose which checks should trigger the prompt."
       />
       <div class="grid gap-3 max-[920px]:grid-cols-1 md:grid-cols-2">
