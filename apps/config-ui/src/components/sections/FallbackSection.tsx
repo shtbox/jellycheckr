@@ -2,7 +2,6 @@ import type { PluginConfig } from '../../types';
 import { CheckboxCard } from '../controls/CheckboxCard';
 import { NumberField } from '../controls/NumberField';
 import { SectionHeader } from '../controls/SectionHeader';
-import { TextField } from '../controls/TextField';
 import type { NumberHandlerFactory, UpdateFieldHandler } from './types';
 
 type FallbackSectionProps = {
