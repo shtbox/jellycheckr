@@ -1,6 +1,7 @@
 import type { PluginConfig } from '../../types';
 import { CheckboxCard } from '../controls/CheckboxCard';
 import { SectionHeader } from '../controls/SectionHeader';
+import { TextField } from '../controls/TextField';
 import type { UpdateFieldHandler } from './types';
 
 type FeatureTogglesSectionProps = {
@@ -16,7 +17,7 @@ export function FeatureTogglesSection(props: FeatureTogglesSectionProps) {
   return (
     <section class={sectionClass}>
       <SectionHeader
-        title="Feature Toggles"
+        title="Main Settings"
         description="Enable core behavior first, then choose which checks should trigger the prompt."
       />
       <div class="grid gap-3 max-[920px]:grid-cols-1 md:grid-cols-2">
@@ -47,6 +48,15 @@ export function FeatureTogglesSection(props: FeatureTogglesSectionProps) {
           description="Trigger based on elapsed playback/inactivity time."
           checked={c.EnableTimerCheck}
           onChange={(checked) => props.onUpdateField('EnableTimerCheck', checked)}
+        />
+      </div>
+      <div class="grid gap-3 max-[920px]:grid-cols-1">
+        <TextField
+          id="jc_fb_message_text"
+          label="Fallback client message"
+          value={c.ClientMessage}
+          onInput={(e: any) => props.onUpdateField('ClientMessage', String(e.currentTarget.value ?? ''))}
+          help="Best-effort message sent before pause when messaging is enabled."
         />
       </div>
     </section>

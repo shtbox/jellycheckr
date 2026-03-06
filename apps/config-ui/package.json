@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "vite",
+    "preview": "vite preview",
     "build:js": "esbuild src/index.tsx --bundle --platform=browser --format=iife --target=es2018 --jsx=automatic --jsx-import-source=preact --outfile=dist/jellycheckr-config-ui.bundle.js",
     "build:css": "tailwindcss -c tailwind.config.cjs -i src/tailwind.css -o dist/jellycheckr-config-ui.css --minify",
     "build:bundle": "npm run build:js && npm run build:css"
@@ -13,8 +15,10 @@
     "preact": "^10.24.3"
   },
   "devDependencies": {
+    "@preact/preset-vite": "^2.10.2",
     "esbuild": "^0.25.10",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0"
   }
 }

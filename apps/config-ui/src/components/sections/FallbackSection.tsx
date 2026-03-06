@@ -84,14 +84,6 @@ export function FallbackSection(props: FallbackSectionProps) {
             onChange={(checked) => props.onUpdateField('ServerFallbackDryRun', checked)}
           />
         </div>
-
-        <TextField
-          id="jc_fb_message_text"
-          label="Fallback client message"
-          value={c.ClientMessage}
-          onInput={(e: any) => props.onUpdateField('ClientMessage', String(e.currentTarget.value ?? ''))}
-          help="Best-effort message sent before pause when messaging is enabled."
-        />
       </div>
     </section>
   );
