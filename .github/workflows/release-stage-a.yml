@@ -11,6 +11,16 @@ on:
         required: false
         default: main
         type: string
+      bump_override:
+        description: Override the detected release type when needed.
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - major
+          - minor
+          - patch
 
 permissions:
   contents: read
@@ -32,6 +42,7 @@ jobs:
       release_name: ${{ steps.release_context.outputs.release_name }}
       artifact_file_name: ${{ steps.release_context.outputs.artifact_file_name }}
       manifest_version: ${{ steps.release_context.outputs.manifest_version }}
+      assembly_version: ${{ steps.release_context.outputs.assembly_version }}
       target_abi: ${{ steps.release_context.outputs.target_abi }}
     steps:
       - name: Checkout repository with tags
@@ -59,16 +70,25 @@ jobs:
       - name: Resolve stable release context
         id: release_context
         shell: pwsh
+        env:
+          MANUAL_BUMP_OVERRIDE: ${{ github.event_name == 'workflow_dispatch' && inputs.bump_override || 'auto' }}
         run: |
           $mode = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { 'manual' } else { 'push' }
           $shaOverride = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { '' } else { '${{ github.sha }}' }
+          $bumpOverride = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            if ($env:MANUAL_BUMP_OVERRIDE) { $env:MANUAL_BUMP_OVERRIDE } else { 'auto' }
+          }
+          else {
+            'auto'
+          }
 
           $contextJson = & ./.github/scripts/Get-ReleaseContext.ps1 `
             -Mode $mode `
             -Repository '${{ github.repository }}' `
             -EventPath $env:GITHUB_EVENT_PATH `
             -Sha $shaOverride `
-            -GitHubToken '${{ github.token }}'
+            -GitHubToken '${{ github.token }}' `
+            -BumpOverride $bumpOverride
           $context = $contextJson | ConvertFrom-Json -Depth 20
 
           if ($context.stableTagState -eq 'different-sha') {
@@ -90,6 +110,7 @@ jobs:
               ''
               "- Reason: release type resolved to ``none``."
               "- Source title: $($context.associatedPrTitle)"
+              '- Recovery: apply a ``release:patch|minor|major`` label to the PR, or rerun this workflow with ``bump_override``.'
             ) -join "`n"
             Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary
           }
@@ -244,4 +265,5 @@ jobs:
       release_name: ${{ needs.build_and_verify.outputs.release_name }}
       artifact_file_name: ${{ needs.build_and_verify.outputs.artifact_file_name }}
       manifest_version: ${{ needs.build_and_verify.outputs.manifest_version }}
+      assembly_version: ${{ needs.build_and_verify.outputs.assembly_version }}
       target_abi: ${{ needs.build_and_verify.outputs.target_abi }}

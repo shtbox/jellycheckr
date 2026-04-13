@@ -21,6 +21,17 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
+function ConvertFrom-JsonCompat {
+    param([Parameter(Mandatory = $true)][string]$Json)
+
+    $convertFromJsonCommand = Get-Command -Name ConvertFrom-Json
+    if ($convertFromJsonCommand.Parameters.ContainsKey("Depth")) {
+        return $Json | ConvertFrom-Json -Depth 20
+    }
+
+    return $Json | ConvertFrom-Json
+}
+
 function Get-StatusCode {
     param([System.Management.Automation.ErrorRecord]$ErrorRecord)
 
@@ -170,10 +181,15 @@ function Parse-ConventionalCommit {
     $type = $match.Groups["type"].Value.ToLowerInvariant()
     $isBreaking = $match.Groups["breaking"].Success -or ($Body -match "(?im)^(BREAKING CHANGE|BREAKING-CHANGE): ")
 
+    # Treat code-affecting maintenance changes as patch releases by default.
     $releaseType = switch ($type) {
         "feat" { "minor" }
         "fix" { "patch" }
         "perf" { "patch" }
+        "refactor" { "patch" }
+        "revert" { "patch" }
+        "security" { "patch" }
+        "sec" { "patch" }
         default { "none" }
     }
 
@@ -301,6 +317,20 @@ function Get-ReleaseTargetSha {
     return Get-HeadSha
 }
 
+function ConvertTo-SingleString {
+    param([object]$Value)
+
+    if ($null -eq $Value) {
+        return ""
+    }
+
+    if ($Value -is [System.Array]) {
+        return [string]::Join("`n", @($Value | ForEach-Object { [string]$_ }))
+    }
+
+    return [string]$Value
+}
+
 function Resolve-AssociatedPullRequest {
     param(
         [pscustomobject]$EventPayload,
@@ -311,7 +341,7 @@ function Resolve-AssociatedPullRequest {
         return $EventPayload.pull_request
     }
 
-    if ($Mode -eq "push") {
+    if ($Mode -in @("push", "manual")) {
         if (-not [string]::IsNullOrWhiteSpace($Repository) -and -not [string]::IsNullOrWhiteSpace($GitHubToken)) {
             try {
                 $pullRequests = Invoke-GitHubApi -Method GET -Path "/repos/$Repository/commits/$ResolvedSha/pulls" -AllowNotFound
@@ -354,8 +384,8 @@ function Resolve-TitleAndBody {
         throw "The pull_request payload is required for PR mode."
     }
 
-    $subject = (git log -1 --format=%s $ResolvedSha).Trim()
-    $body = (git log -1 --format=%b $ResolvedSha)
+    $subject = (ConvertTo-SingleString -Value (git log -1 --format=%s $ResolvedSha)).Trim()
+    $body = ConvertTo-SingleString -Value (git log -1 --format=%b $ResolvedSha)
 
     return [pscustomobject]@{
         Title = $subject
@@ -417,7 +447,7 @@ function Resolve-ExistingTagTargetSha {
 $projectDefaults = Get-ProjectDefaults
 $eventPayload = $null
 if (-not [string]::IsNullOrWhiteSpace($EventPath) -and (Test-Path -LiteralPath $EventPath)) {
-    $eventPayload = Get-Content -LiteralPath $EventPath -Raw | ConvertFrom-Json -Depth 20
+    $eventPayload = ConvertFrom-JsonCompat -Json (Get-Content -LiteralPath $EventPath -Raw)
 }
 
 $resolvedSha = Get-ReleaseTargetSha -EventPayload $eventPayload
@@ -469,8 +499,8 @@ $stableTagState = "not_applicable"
 if ($shouldRelease) {
     $stableVersion = Get-NextStableVersion -BaseVersion $baseVersion -ReleaseType $resolvedReleaseType
     $stableTag = "v$stableVersion"
-    $stableManifestVersion = $stableVersion
     $stableAssemblyVersion = "$stableVersion.0"
+    $stableManifestVersion = $stableAssemblyVersion
     $stableTagTargetSha = Resolve-ExistingTagTargetSha -TagName $stableTag
 
     if ($null -eq $stableTagTargetSha) {

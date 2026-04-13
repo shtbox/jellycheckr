@@ -92,5 +92,5 @@ jobs:
           -o "${{ runner.temp }}/pr-validation-publish"
           /p:JellycheckrCreatePluginZip=false
           /p:Version=0.0.0-ci
-          /p:JellycheckrManifestVersion=0.0.0
+          /p:JellycheckrManifestVersion=0.0.0.0
           /p:JellycheckrAssemblyVersionNumber=0.0.0.0

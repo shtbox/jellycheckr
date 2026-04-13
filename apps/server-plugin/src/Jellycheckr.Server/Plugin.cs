@@ -3,16 +3,24 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
+using Microsoft.Extensions.Logging;
+using Jellycheckr.Server.Infrastructure;
 
 namespace Jellycheckr.Server;
 
 public sealed class Plugin : BasePlugin<Models.PluginConfig>, IHasWebPages
 {
-    public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
+    public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer, ILogger<Plugin> logger)
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
         ApplicationPaths = applicationPaths;
+
+        var assemblyVersion = GetType().Assembly.GetName().Version?.ToString();
+        if (!string.IsNullOrWhiteSpace(assemblyVersion))
+        {
+            PluginManifestSelfHeal.TryRepair(AssemblyFilePath, Id, assemblyVersion, logger);
+        }
     }
 
     public override string Name => "Jellycheckr AYSW";

@@ -24,6 +24,9 @@ on:
       manifest_version:
         required: true
         type: string
+      assembly_version:
+        required: true
+        type: string
       target_abi:
         required: true
         type: string
@@ -68,6 +71,10 @@ jobs:
 
           if ($releaseContext.manifestVersion -ne '${{ inputs.manifest_version }}') {
             throw "release-context.json manifestVersion mismatch."
+          }
+
+          if ($releaseContext.assemblyVersion -ne '${{ inputs.assembly_version }}') {
+            throw "release-context.json assemblyVersion mismatch."
           }
 
           if ($releaseContext.targetSha -ne '${{ inputs.release_sha }}') {

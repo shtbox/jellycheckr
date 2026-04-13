@@ -14,6 +14,17 @@
 Optional backend-only fast loop (skip frontend rebuilds):
 - `dotnet build apps/server-plugin/src/Jellycheckr.Server/Jellycheckr.Server.csproj -p:JellycheckrBuildEmbeddedAssets=false`
 
+## Release Automation
+
+Stable releases publish from merges to `main` when the resolved Conventional Commit type indicates a version bump:
+- `feat` => minor
+- `fix`, `perf`, `refactor`, `revert`, `security`, `sec` => patch
+- any type with `!` or `BREAKING CHANGE:` => major
+
+Non-shipping commit types such as `build`, `chore`, `ci`, `docs`, `style`, and `test` stay opt-in. Use one of these when you need to force a release anyway:
+- add `release:patch`, `release:minor`, or `release:major` to the PR
+- run `Enterprise Release - Stage A` manually with `ref=<branch-or-sha>` and `bump_override=<patch|minor|major>`
+
 ## Repeatable Docker Harness (Pre-release Validation)
 
 Use the harness to build plugin source against a pinned Jellyfin release image, run the container, and execute smoke checks.
@@ -23,15 +34,15 @@ Primary script:
 
 Quick commands:
 - Build only:
-  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode build -Version 10.11.6`
+  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode build -Version 10.11.8`
 - Start container (build + up):
-  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode up -Version 10.11.6`
+  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode up -Version 10.11.8`
 - One-command smoke run (build + up + checks + artifacts):
-  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode smoke -Version 10.11.6`
+  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode smoke -Version 10.11.8`
 - Matrix run from `tools/harness/versions.json`:
   - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode matrix`
 - Stop container:
-  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode down -Version 10.11.6`
+  - `pwsh ./tools/harness/scripts/Invoke-Harness.ps1 -Mode down -Version 10.11.8`
 
 Smoke checks include:
 - Jellyfin readiness check (`/System/Info/Public`)
@@ -57,6 +68,10 @@ Smoke checks include:
 - Web UI injection registration check:
   - verifies `Registered Jellyfin Web index.html transformation for web client injection` is present in logs for `10.11.x`
   - records `skipped_unsupported_jellyfin_version` for `10.9.x` because no compatible File Transformation package is pinned in harness
+- Plugin lifecycle regression check:
+  - fetches `/Plugins`
+  - resolves Jellycheckr by plugin id and uses the returned version for `POST /Plugins/<id>/<version>/Disable`
+  - verifies `DELETE /Plugins/<id>/<version>` returns HTTP `204`
 
 Artifacts:
 - Written under `tools/harness/artifacts/`
@@ -105,6 +120,10 @@ Use helper script to set short-cycle test config on a reachable server:
 If you install the server plugin manually (copy into `plugins/JellycheckrAysw`), the dashboard may show **"An error occurred while getting the plugin details from the repository."** when you open the plugin or its configure screen. That is expected: the plugin is not in the Jellyfin plugin catalog, so the dashboard's repo lookup fails. The plugin still works. Use **Configure** to open the built-in config page and change settings; nothing in the server logs is required for this.
 
 If the Jellyfin UI shows 404s when disabling or uninstalling the plugin (`/Plugins/<id>/<version>/Disable` or `/Plugins/<id>/<version>`), verify the installed plugin folder includes `meta.json` and that its `version` matches the plugin DLL file version (for example `0.1.0.0`, not `0.1.0`).
+
+Release note for the next build:
+- The uninstall regression on Jellyfin `10.11.8` is fixed by aligning `meta.json.version` with the plugin DLL version.
+- If you already installed a broken build, the plugin now repairs `meta.json` on startup, but Jellyfin still needs one additional restart before disable/uninstall actions use the corrected version.
 
 ## Plugin Debugging
 

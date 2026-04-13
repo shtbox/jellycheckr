@@ -24,6 +24,26 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
+function ConvertFrom-JsonCompat {
+    param([Parameter(Mandatory = $true)][string]$Json)
+
+    $convertFromJsonCommand = Get-Command -Name ConvertFrom-Json
+    if ($convertFromJsonCommand.Parameters.ContainsKey("Depth")) {
+        return $Json | ConvertFrom-Json -Depth 20
+    }
+
+    return $Json | ConvertFrom-Json
+}
+
+function Ensure-ZipFileType {
+    try {
+        [void][System.IO.Compression.ZipFile]
+    }
+    catch {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+    }
+}
+
 function Read-JsonFile {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -31,7 +51,7 @@ function Read-JsonFile {
         throw "Required JSON file was not found: $Path"
     }
 
-    return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -Depth 20
+    return ConvertFrom-JsonCompat -Json (Get-Content -LiteralPath $Path -Raw)
 }
 
 function Get-RelativeFileSet {
@@ -57,8 +77,12 @@ function Assert-MetaJson {
         [string]$Location
     )
 
-    if ($MetaJson.version -ne $ExpectedManifestVersion) {
-        throw "meta.json version mismatch in $Location. Expected '$ExpectedManifestVersion' but found '$($MetaJson.version)'."
+    if ($ExpectedManifestVersion -ne $ExpectedAssemblyVersion) {
+        throw "Expected manifest version '$ExpectedManifestVersion' must match expected assembly version '$ExpectedAssemblyVersion'."
+    }
+
+    if ($MetaJson.version -ne $ExpectedAssemblyVersion) {
+        throw "meta.json version mismatch in $Location. Expected assembly-aligned version '$ExpectedAssemblyVersion' but found '$($MetaJson.version)'."
     }
 
     if ($MetaJson.packageVersion -ne $ExpectedPackageVersion) {
@@ -112,15 +136,25 @@ if ($assemblyVersion -ne $ExpectedAssemblyVersion) {
     throw "Assembly version mismatch. Expected '$ExpectedAssemblyVersion' but found '$assemblyVersion'."
 }
 
+$publishMetaVersion = [string]$publishMetaJson.version
+if ($publishMetaVersion -ne $assemblyVersion) {
+    throw "Publish output meta.json version '$publishMetaVersion' did not match assembly version '$assemblyVersion'."
+}
+
 $extractDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("jellycheckr-package-" + [System.Guid]::NewGuid().ToString("N"))
 [System.IO.Directory]::CreateDirectory($extractDirectory) | Out-Null
 
 try {
+    Ensure-ZipFileType
     [System.IO.Compression.ZipFile]::ExtractToDirectory($zipFile.FullName, $extractDirectory)
 
     $extractedMetaPath = Join-Path $extractDirectory "meta.json"
     $extractedMetaJson = Read-JsonFile -Path $extractedMetaPath
     Assert-MetaJson -MetaJson $extractedMetaJson -Location $extractedMetaPath
+
+    if ([string]$extractedMetaJson.version -ne $assemblyVersion) {
+        throw "Zip meta.json version '$($extractedMetaJson.version)' did not match assembly version '$assemblyVersion'."
+    }
 
     $publishFiles = Get-RelativeFileSet -RootPath $PublishDirectory
     $zipFiles = Get-RelativeFileSet -RootPath $extractDirectory

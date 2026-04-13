@@ -29,6 +29,7 @@ $harnessMediaContainerDirectory = "/media/harness"
 $harnessMediaContainerVideoPath = "/media/harness/test-video.mp4"
 $harnessMediaSourcePath = Join-Path $harnessRoot "test-video.mp4"
 $harnessDeviceId = "jellycheckr-harness"
+$jellycheckrPluginId = "a53af988-9d8f-4a7c-8d5f-f902fd90e4bd"
 
 function Read-VersionsConfig {
     if (-not (Test-Path -LiteralPath $versionsFile)) {
@@ -810,6 +811,59 @@ function Invoke-WebUiInjectionCheck {
     return $result
 }
 
+function Invoke-PluginLifecycleCheck {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)][hashtable]$Headers,
+        [Parameter(Mandatory = $true)][string]$RunArtifactsDirectory
+    )
+
+    Write-Host "[harness] Checking plugin lifecycle routes via /Plugins inventory"
+    $pluginsResponse = Invoke-RestMethod -Method Get -Uri "$($Context.BaseUrl)/Plugins" -Headers $Headers -TimeoutSec 15
+    $plugins = if ($pluginsResponse -is [System.Array]) { $pluginsResponse } else { @($pluginsResponse) }
+    $expectedPluginId = $jellycheckrPluginId.Replace("-", "").ToLowerInvariant()
+    $plugin = $plugins | Where-Object {
+        $pluginId = ([string]$_.Id).Replace("-", "").ToLowerInvariant()
+        [string]::Equals($pluginId, $expectedPluginId, [System.StringComparison]::Ordinal)
+    } | Select-Object -First 1
+
+    if ($null -eq $plugin) {
+        throw "Plugin lifecycle check could not find Jellycheckr plugin id '$jellycheckrPluginId' in /Plugins response."
+    }
+
+    $pluginRouteId = [string]$plugin.Id
+    if ([string]::IsNullOrWhiteSpace($pluginRouteId)) {
+        throw "Plugin lifecycle check could not resolve Jellycheckr route id from /Plugins response."
+    }
+
+    $pluginVersion = [string]$plugin.Version
+    if ([string]::IsNullOrWhiteSpace($pluginVersion)) {
+        throw "Plugin lifecycle check could not resolve Jellycheckr version from /Plugins response."
+    }
+
+    $encodedVersion = [System.Uri]::EscapeDataString($pluginVersion)
+    $disableUri = "$($Context.BaseUrl)/Plugins/$pluginRouteId/$encodedVersion/Disable"
+    $disableResponse = Invoke-WebRequestAllowError -Method "POST" -Uri $disableUri -Headers $Headers -TimeoutSeconds 15
+    Assert-StatusCode -Name "Plugin disable route" -Expected 204 -Actual $disableResponse.StatusCode
+
+    $uninstallUri = "$($Context.BaseUrl)/Plugins/$pluginRouteId/$encodedVersion"
+    $uninstallResponse = Invoke-WebRequestAllowError -Method "DELETE" -Uri $uninstallUri -Headers $Headers -TimeoutSeconds 15
+    Assert-StatusCode -Name "Plugin uninstall route" -Expected 204 -Actual $uninstallResponse.StatusCode
+
+    $result = [ordered]@{
+        pluginId = $jellycheckrPluginId
+        pluginRouteId = $pluginRouteId
+        version = $pluginVersion
+        disableStatus = $disableResponse.StatusCode
+        uninstallStatus = $uninstallResponse.StatusCode
+        disableUri = $disableUri
+        uninstallUri = $uninstallUri
+    }
+
+    Write-JsonFile -Value $result -Path (Join-Path $RunArtifactsDirectory "plugin-lifecycle-check.json")
+    return $result
+}
+
 function Invoke-SmokeChecks {
     param(
         [Parameter(Mandatory = $true)]$Context,
@@ -946,6 +1000,7 @@ function Invoke-SmokeChecks {
 
     $developerFallbackCheck = Invoke-DeveloperFallbackPlaybackCheck -Context $Context -Headers $authHeaders -RunArtifactsDirectory $RunArtifactsDirectory
     $webUiInjectionCheck = Invoke-WebUiInjectionCheck -Context $Context -RunArtifactsDirectory $RunArtifactsDirectory
+    $pluginLifecycleCheck = Invoke-PluginLifecycleCheck -Context $Context -Headers $authHeaders -RunArtifactsDirectory $RunArtifactsDirectory
 
     $summary = [ordered]@{
         version = $Context.Version
@@ -961,6 +1016,7 @@ function Invoke-SmokeChecks {
         securityChecks = $securityResults
         developerFallbackCheck = $developerFallbackCheck
         webUiInjectionCheck = $webUiInjectionCheck
+        pluginLifecycleCheck = $pluginLifecycleCheck
     }
 
     Write-JsonFile -Value $summary -Path (Join-Path $RunArtifactsDirectory "smoke-summary.json")

@@ -34,6 +34,10 @@ function Parse-ConventionalCommit {
         "feat" { "Features" }
         "fix" { "Fixes" }
         "perf" { "Fixes" }
+        "revert" { "Fixes" }
+        "security" { "Fixes" }
+        "sec" { "Fixes" }
+        "refactor" { "Refactors" }
         default { "Other" }
     }
 
@@ -101,7 +105,7 @@ function Add-EntryToSection {
     $Sections[$SectionName].Add($BulletText)
 }
 
-$sectionOrder = @("Breaking Changes", "Features", "Fixes", "Other")
+$sectionOrder = @("Breaking Changes", "Features", "Fixes", "Refactors", "Other")
 $sections = @{}
 foreach ($section in $sectionOrder) {
     $sections[$section] = New-Object System.Collections.Generic.List[string]

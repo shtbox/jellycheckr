@@ -10,12 +10,11 @@
     <JellycheckrPluginGuid>a53af988-9d8f-4a7c-8d5f-f902fd90e4bd</JellycheckrPluginGuid>
     <JellycheckrVersionCore4>$([System.Text.RegularExpressions.Regex]::Match('$(Version)', '^\d+\.\d+\.\d+\.\d+').Value)</JellycheckrVersionCore4>
     <JellycheckrVersionCore3>$([System.Text.RegularExpressions.Regex]::Match('$(Version)', '^\d+\.\d+\.\d+').Value)</JellycheckrVersionCore3>
-    <JellycheckrDefaultManifestVersion Condition="'$(JellycheckrVersionCore4)' != ''">$(JellycheckrVersionCore4)</JellycheckrDefaultManifestVersion>
-    <JellycheckrDefaultManifestVersion Condition="'$(JellycheckrDefaultManifestVersion)' == '' and '$(JellycheckrVersionCore3)' != ''">$(JellycheckrVersionCore3)</JellycheckrDefaultManifestVersion>
-    <JellycheckrManifestVersion Condition="'$(JellycheckrManifestVersion)' == ''">$(JellycheckrDefaultManifestVersion)</JellycheckrManifestVersion>
     <JellycheckrDefaultAssemblyVersionNumber Condition="'$(JellycheckrVersionCore4)' != ''">$(JellycheckrVersionCore4)</JellycheckrDefaultAssemblyVersionNumber>
     <JellycheckrDefaultAssemblyVersionNumber Condition="'$(JellycheckrDefaultAssemblyVersionNumber)' == '' and '$(JellycheckrVersionCore3)' != ''">$(JellycheckrVersionCore3).0</JellycheckrDefaultAssemblyVersionNumber>
     <JellycheckrAssemblyVersionNumber Condition="'$(JellycheckrAssemblyVersionNumber)' == ''">$(JellycheckrDefaultAssemblyVersionNumber)</JellycheckrAssemblyVersionNumber>
+    <JellycheckrDefaultManifestVersion Condition="'$(JellycheckrAssemblyVersionNumber)' != ''">$(JellycheckrAssemblyVersionNumber)</JellycheckrDefaultManifestVersion>
+    <JellycheckrManifestVersion Condition="'$(JellycheckrManifestVersion)' == ''">$(JellycheckrDefaultManifestVersion)</JellycheckrManifestVersion>
     <JellycheckrTargetAbi Condition="'$(JellycheckrTargetAbi)' == ''">$(JellyfinPackageVersion).0</JellycheckrTargetAbi>
     <AssemblyVersion>$(JellycheckrAssemblyVersionNumber)</AssemblyVersion>
     <FileVersion>$(JellycheckrAssemblyVersionNumber)</FileVersion>
@@ -219,17 +218,20 @@
     BeforeTargets="PrepareForBuild;Publish"
     Condition="'$(TargetFramework)' != ''">
     <Error
-      Condition="'$(JellycheckrManifestVersion)' == '' or !$([System.Text.RegularExpressions.Regex]::IsMatch('$(JellycheckrManifestVersion)', '^\d+\.\d+\.\d+(\.\d+)?$'))"
-      Text="Jellycheckr manifest version '$(JellycheckrManifestVersion)' must be a 3-part or 4-part numeric version (for example 0.1.0 or 0.1.0.4)." />
+      Condition="'$(JellycheckrManifestVersion)' == '' or !$([System.Text.RegularExpressions.Regex]::IsMatch('$(JellycheckrManifestVersion)', '^\d+\.\d+\.\d+\.\d+$'))"
+      Text="Jellycheckr manifest version '$(JellycheckrManifestVersion)' must be a 4-part numeric version (for example 0.1.0.0)." />
     <Error
       Condition="'$(JellycheckrAssemblyVersionNumber)' == '' or !$([System.Text.RegularExpressions.Regex]::IsMatch('$(JellycheckrAssemblyVersionNumber)', '^\d+\.\d+\.\d+\.\d+$'))"
       Text="Jellycheckr assembly version '$(JellycheckrAssemblyVersionNumber)' must be a 4-part numeric version (for example 0.1.0.0)." />
+    <Error
+      Condition="'$(JellycheckrManifestVersion)' != '$(JellycheckrAssemblyVersionNumber)'"
+      Text="Jellycheckr manifest version '$(JellycheckrManifestVersion)' must match the assembly version '$(JellycheckrAssemblyVersionNumber)'." />
   </Target>
 
   <Target
     Name="JellycheckrWritePluginMetaJson"
     AfterTargets="Publish"
-    Condition="'$(TargetFramework)' == 'net8.0'">
+    Condition="'$(TargetFramework)' != ''">
     <PropertyGroup>
       <JellycheckrPluginMetaJsonPath>$(PublishDir)meta.json</JellycheckrPluginMetaJsonPath>
       <JellycheckrPluginMetaTimestamp>$([System.DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))</JellycheckrPluginMetaTimestamp>
