@@ -68,6 +68,7 @@ public sealed class ServerFallbackSessionSnapshotProvider : IServerFallbackSessi
         var itemName = GetPropertyValue<string>(nowPlaying, "Name");
         var mediaType = GetPropertyValue<string>(nowPlaying, "MediaType");
         var itemType = GetPropertyValue<string>(nowPlaying, "Type");
+        var seriesId = TryReadPropertyId(nowPlaying, "SeriesId");
 
         var isPaused = GetPropertyValue<bool?>(session, "IsPaused")
             ?? GetPropertyValue<bool?>(playState, "IsPaused");
@@ -86,7 +87,9 @@ public sealed class ServerFallbackSessionSnapshotProvider : IServerFallbackSessi
             IsActive = session.IsActive,
             ItemId = itemId,
             ItemName = itemName,
-            MediaType = !string.IsNullOrWhiteSpace(mediaType) ? mediaType : itemType,
+            MediaType = mediaType,
+            ItemType = itemType,
+            SeriesId = seriesId,
             PositionTicks = positionTicks,
             IsPaused = isPaused,
             LastActivityUtc = ToDateTimeOffset(session.LastActivityDate),
@@ -109,6 +112,23 @@ public sealed class ServerFallbackSessionSnapshotProvider : IServerFallbackSessi
         }
 
         var idObj = GetRawPropertyValue(value, "Id");
+        return ToStringOrNull(idObj);
+    }
+
+    private static string? TryReadPropertyId(object? instance, string propertyName)
+    {
+        if (instance is null)
+        {
+            return null;
+        }
+
+        var directId = GetPropertyValue<string>(instance, propertyName);
+        if (!string.IsNullOrWhiteSpace(directId))
+        {
+            return directId;
+        }
+
+        var idObj = GetRawPropertyValue(instance, propertyName);
         return ToStringOrNull(idObj);
     }
 
@@ -178,6 +198,8 @@ public sealed class ServerObservedSessionSnapshot
     public string? ItemId { get; set; }
     public string? ItemName { get; set; }
     public string? MediaType { get; set; }
+    public string? ItemType { get; set; }
+    public string? SeriesId { get; set; }
     public long? PositionTicks { get; set; }
     public bool? IsPaused { get; set; }
     public DateTimeOffset? LastActivityUtc { get; set; }

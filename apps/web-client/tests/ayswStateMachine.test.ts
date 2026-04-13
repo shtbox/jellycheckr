@@ -93,6 +93,16 @@ describe("aysw state machine", () => {
     expect(shouldPrompt(state, 10_000, episodeOnlyConfig)).toBe(true);
   });
 
+  it("does not count movie transitions toward the episode threshold", () => {
+    let state = createInitialState(0);
+    state = { ...state, lastItem: { id: "m1", type: "Movie" }, lastInteractionTs: -100_000 };
+
+    state = registerItemTransition(state, 10_000, { id: "m2", type: "Movie" }, config);
+
+    expect(state.episodeTransitionsSinceAck).toBe(0);
+    expect(shouldPrompt(state, 10_000, { ...config, enableTimerCheck: false })).toBe(false);
+  });
+
   it("does not prompt when both checks are disabled unless developer mode is enabled", () => {
     const disabledChecksConfig: EffectiveConfigResponse = {
       ...config,

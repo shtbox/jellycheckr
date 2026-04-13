@@ -39,18 +39,19 @@ public sealed class ServerFallbackEnforcementServiceInferenceTests
     }
 
     [Fact]
-    public void ItemTransition_AfterNoItemGap_IncrementsEpisodeCounter()
+    public void EpisodeTransition_AfterShortNoItemGap_IncrementsEpisodeCounter()
     {
         var state = new SessionState { SessionId = "s1" };
 
-        InvokeObserveSession(state, CreateSnapshot("s1", "item-a"), Now.AddMinutes(-2));
-        InvokeObserveSession(state, CreateSnapshot("s1", null), Now.AddMinutes(-1));
-        InvokeObserveSession(state, CreateSnapshot("s1", null), Now.AddSeconds(-30));
-        InvokeObserveSession(state, CreateSnapshot("s1", "item-b"), Now);
+        InvokeObserveSession(state, CreateSnapshot("s1", "item-a", "Episode", "series-1"), Now.AddSeconds(-15));
+        InvokeObserveSession(state, CreateSnapshot("s1", null), Now.AddSeconds(-10));
+        InvokeObserveSession(state, CreateSnapshot("s1", null), Now.AddSeconds(-5));
+        InvokeObserveSession(state, CreateSnapshot("s1", "item-b", "Episode", "series-1"), Now);
 
         Assert.Equal(1, state.ServerFallbackEpisodeTransitionsSinceReset);
         Assert.Equal("item-a", state.PreviousItemId);
         Assert.Equal("item-b", state.CurrentItemId);
+        Assert.Null(state.NoCurrentItemSinceUtc);
     }
 
     [Fact]
@@ -58,13 +59,47 @@ public sealed class ServerFallbackEnforcementServiceInferenceTests
     {
         var state = new SessionState { SessionId = "s1" };
 
-        InvokeObserveSession(state, CreateSnapshot("s1", "item-a"), Now.AddMinutes(-2));
-        InvokeObserveSession(state, CreateSnapshot("s1", null), Now.AddMinutes(-1));
-        InvokeObserveSession(state, CreateSnapshot("s1", "item-a"), Now);
+        InvokeObserveSession(state, CreateSnapshot("s1", "item-a", "Episode", "series-1"), Now.AddSeconds(-15));
+        InvokeObserveSession(state, CreateSnapshot("s1", null), Now.AddSeconds(-10));
+        InvokeObserveSession(state, CreateSnapshot("s1", "item-a", "Episode", "series-1"), Now);
 
         Assert.Equal(0, state.ServerFallbackEpisodeTransitionsSinceReset);
         Assert.Equal("item-a", state.PreviousItemId);
         Assert.Equal("item-a", state.CurrentItemId);
+    }
+
+    [Fact]
+    public void MovieTransition_DoesNotIncrementEpisodeCounter()
+    {
+        var state = new SessionState { SessionId = "s1" };
+
+        InvokeObserveSession(state, CreateSnapshot("s1", "movie-a", "Movie"), Now.AddMinutes(-2));
+        InvokeObserveSession(state, CreateSnapshot("s1", "movie-b", "Movie"), Now);
+
+        Assert.Equal(0, state.ServerFallbackEpisodeTransitionsSinceReset);
+    }
+
+    [Fact]
+    public void MixedMediaTransition_DoesNotIncrementEpisodeCounter()
+    {
+        var state = new SessionState { SessionId = "s1" };
+
+        InvokeObserveSession(state, CreateSnapshot("s1", "episode-a", "Episode", "series-1"), Now.AddMinutes(-3));
+        InvokeObserveSession(state, CreateSnapshot("s1", "movie-a", "Movie"), Now.AddMinutes(-2));
+        InvokeObserveSession(state, CreateSnapshot("s1", "episode-b", "Episode", "series-1"), Now);
+
+        Assert.Equal(0, state.ServerFallbackEpisodeTransitionsSinceReset);
+    }
+
+    [Fact]
+    public void EpisodeTransition_DifferentSeries_DoesNotIncrementEpisodeCounter()
+    {
+        var state = new SessionState { SessionId = "s1" };
+
+        InvokeObserveSession(state, CreateSnapshot("s1", "episode-a", "Episode", "series-1"), Now.AddMinutes(-2));
+        InvokeObserveSession(state, CreateSnapshot("s1", "episode-b", "Episode", "series-2"), Now);
+
+        Assert.Equal(0, state.ServerFallbackEpisodeTransitionsSinceReset);
     }
 
     [Fact]
@@ -148,6 +183,64 @@ public sealed class ServerFallbackEnforcementServiceInferenceTests
         Assert.Equal(0, state.ServerFallbackPlaybackTicksSinceReset);
     }
 
+    [Fact]
+    public void SustainedNoItemGap_ResetsFallbackWindow()
+    {
+        var state = new SessionState
+        {
+            SessionId = "s1",
+            CurrentItemId = "episode-a",
+            CurrentItemType = "Episode",
+            CurrentSeriesId = "series-1",
+            PromptActive = true,
+            PromptDeadlineUtc = Now.AddMinutes(1),
+            ServerFallbackEpisodeTransitionsSinceReset = 2,
+            ServerFallbackPlaybackTicksSinceReset = TimeSpan.FromMinutes(45).Ticks
+        };
+
+        InvokeObserveSession(state, CreateSnapshot("s1", null), Now.AddSeconds(-25));
+        InvokeObserveSession(state, CreateSnapshot("s1", null), Now);
+
+        Assert.Equal(0, state.ServerFallbackEpisodeTransitionsSinceReset);
+        Assert.Equal(0, state.ServerFallbackPlaybackTicksSinceReset);
+        Assert.False(state.PromptActive);
+        Assert.Null(state.PromptDeadlineUtc);
+        Assert.Null(state.PreviousItemId);
+        Assert.Equal(Now.AddSeconds(-25), state.NoCurrentItemSinceUtc);
+        Assert.Equal("playback_reset", state.LastFallbackAction);
+        Assert.Equal("no_current_item_gap", state.LastFallbackActionResult);
+    }
+
+    [Fact]
+    public void PlaybackResumedAfterSustainedNoItemGap_StartsFreshSessionWindow()
+    {
+        var state = new SessionState
+        {
+            SessionId = "s1",
+            CurrentItemId = "episode-a",
+            CurrentItemType = "Episode",
+            CurrentSeriesId = "series-1",
+            LastInferredActivityUtc = Now.AddHours(-3),
+            ServerFallbackEpisodeTransitionsSinceReset = 2,
+            ServerFallbackPlaybackTicksSinceReset = TimeSpan.FromMinutes(90).Ticks
+        };
+
+        InvokeObserveSession(state, CreateSnapshot("s1", null), Now.AddSeconds(-25));
+        InvokeObserveSession(state, CreateSnapshot("s1", null), Now.AddSeconds(-1));
+        InvokeObserveSession(state, CreateSnapshot("s1", "episode-b", "Episode", "series-1"), Now);
+
+        Assert.Equal("episode-b", state.CurrentItemId);
+        Assert.Equal("Episode", state.CurrentItemType);
+        Assert.Equal("series-1", state.CurrentSeriesId);
+        Assert.Equal(0, state.ServerFallbackEpisodeTransitionsSinceReset);
+        Assert.Equal(0, state.ServerFallbackPlaybackTicksSinceReset);
+        Assert.Equal(Now, state.LastInferredActivityUtc);
+        Assert.Null(state.PreviousItemId);
+        Assert.Null(state.NoCurrentItemSinceUtc);
+        Assert.Equal("playback_reset", state.LastFallbackAction);
+        Assert.Equal("playback_resumed_after_gap", state.LastFallbackActionResult);
+    }
+
     private static void InvokeObserveSession(
         SessionState state,
         ServerObservedSessionSnapshot snapshot,
@@ -175,12 +268,18 @@ public sealed class ServerFallbackEnforcementServiceInferenceTests
         method!.Invoke(null, new object[] { state, nowUtc, cooldownMinutes, applyCooldown });
     }
 
-    private static ServerObservedSessionSnapshot CreateSnapshot(string sessionId, string? itemId)
+    private static ServerObservedSessionSnapshot CreateSnapshot(
+        string sessionId,
+        string? itemId,
+        string? itemType = null,
+        string? seriesId = null)
     {
         return new ServerObservedSessionSnapshot
         {
             SessionId = sessionId,
-            ItemId = itemId
+            ItemId = itemId,
+            ItemType = itemType,
+            SeriesId = seriesId
         };
     }
 

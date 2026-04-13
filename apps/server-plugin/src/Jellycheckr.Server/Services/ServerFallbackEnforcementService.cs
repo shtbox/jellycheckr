@@ -10,7 +10,6 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
 {
     private static readonly TimeSpan LoopDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan StaleStateTtl = TimeSpan.FromHours(6);
-    private static readonly TimeSpan MissingSessionGrace = TimeSpan.FromSeconds(20);
 
     private readonly ISessionStateStore _sessionStateStore;
     private readonly IConfigService _configService;
@@ -129,7 +128,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
                 continue;
             }
 
-            if (state.LastSeenUtc == DateTimeOffset.MinValue || nowUtc - state.LastSeenUtc > MissingSessionGrace)
+            if (state.LastSeenUtc == DateTimeOffset.MinValue || nowUtc - state.LastSeenUtc > SessionMonitoringPolicy.MissingSessionGrace)
             {
                 continue;
             }
@@ -247,7 +246,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
             return;
         }
 
-        var sessionMissing = state.LastSeenUtc == DateTimeOffset.MinValue || nowUtc - state.LastSeenUtc > MissingSessionGrace;
+        var sessionMissing = state.LastSeenUtc == DateTimeOffset.MinValue || nowUtc - state.LastSeenUtc > SessionMonitoringPolicy.MissingSessionGrace;
 
         if (string.IsNullOrWhiteSpace(state.CurrentItemId) && !sessionMissing)
         {
@@ -405,6 +404,7 @@ public sealed class ServerFallbackEnforcementService : BackgroundService
         state.PauseGraceDeadlineUtc = null;
         state.ServerFallbackEpisodeTransitionsSinceReset = 0;
         state.ServerFallbackPlaybackTicksSinceReset = 0;
+        state.NoCurrentItemSinceUtc = null;
         state.NextEligiblePromptUtc = applyCooldown
             ? nowUtc.AddMinutes(Math.Max(0, cooldownMinutes))
             : DateTimeOffset.MinValue;

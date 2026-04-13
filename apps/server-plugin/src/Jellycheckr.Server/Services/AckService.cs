@@ -79,6 +79,7 @@ public sealed class AckService : IAckService
                 state.ConsecutiveEpisodesSinceAck = 0;
                 state.ServerFallbackEpisodeTransitionsSinceReset = 0;
                 state.ServerFallbackPlaybackTicksSinceReset = 0;
+                state.NoCurrentItemSinceUtc = null;
                 state.FallbackPhase = ServerFallbackPhase.Monitoring;
                 state.PauseIssuedUtc = null;
                 state.PauseGraceDeadlineUtc = null;

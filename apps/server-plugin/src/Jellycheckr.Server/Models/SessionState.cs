@@ -20,7 +20,12 @@ public sealed class SessionState
 
     public string? CurrentItemId { get; set; }
     public string? CurrentItemName { get; set; }
+    public string? CurrentItemType { get; set; }
+    public string? CurrentSeriesId { get; set; }
     public string? PreviousItemId { get; set; }
+    public string? PreviousItemType { get; set; }
+    public string? PreviousSeriesId { get; set; }
+    public DateTimeOffset? NoCurrentItemSinceUtc { get; set; }
 
     public DateTimeOffset LastSeenUtc { get; set; } = DateTimeOffset.MinValue;
     public long? LastObservedPositionTicks { get; set; }
