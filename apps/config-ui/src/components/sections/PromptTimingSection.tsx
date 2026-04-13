@@ -19,9 +19,12 @@ export function PromptTimingSection(props: PromptTimingSectionProps) {
     <section class={sectionClass}>
       <SectionHeader
         title="Prompt Timing"
-        description="Define when prompts fire and how long the interaction window remains open."
+        description="Set when reminders appear and how long viewers have to respond."
         badge={props.triggerMode}
       />
+      <div class="rounded-xl border border-[#ffbf75]/50 bg-[#ffbf75]/12 px-3.5 py-3 text-sm leading-[1.38] text-[#ffe7c7]">
+        Episode-based reminders are for series playback. Movies never move the episode count, so use the timer if you want reminders during films.
+      </div>
       <div class="grid gap-3 max-[920px]:grid-cols-1 md:grid-cols-2">
         <NumberField
           id="jc_episode"
@@ -30,7 +33,7 @@ export function PromptTimingSection(props: PromptTimingSectionProps) {
           max={20}
           value={c.EpisodeThreshold}
           onInput={props.onNumberInput('EpisodeThreshold', 1, 20)}
-          help="Used when episode checking is enabled."
+          help="Counts consecutive episodes from the same series when episode checking is on."
           unit="eps"
           disabled={!c.EnableEpisodeCheck}
         />
@@ -41,7 +44,7 @@ export function PromptTimingSection(props: PromptTimingSectionProps) {
           max={600}
           value={c.MinutesThreshold}
           onInput={props.onNumberInput('MinutesThreshold', 1, 600)}
-          help="Used when timer checking is enabled."
+          help="Applies to all playback, including movies, whenever timer checking is on."
           unit="min"
           disabled={!c.EnableTimerCheck}
         />

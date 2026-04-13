@@ -18,7 +18,7 @@ export function FeatureTogglesSection(props: FeatureTogglesSectionProps) {
     <section class={sectionClass}>
       <SectionHeader
         title="Main"
-        description="Enable core behavior first, then choose which checks should trigger the prompt."
+        description="Turn the feature on, then choose whether reminders should follow episode autoplay, elapsed watch time, or both."
       />
       <div class="grid gap-3 max-[920px]:grid-cols-1 md:grid-cols-2">
         <CheckboxCard
@@ -38,14 +38,14 @@ export function FeatureTogglesSection(props: FeatureTogglesSectionProps) {
         <CheckboxCard
           id="jc_episode_toggle"
           label="Enable episode checking"
-          description="Count consecutive episodes and trigger once the episode threshold is met."
+          description="Track back-to-back episodes in a series. Films do not raise this count."
           checked={c.EnableEpisodeCheck}
           onChange={(checked) => props.onUpdateField('EnableEpisodeCheck', checked)}
         />
         <CheckboxCard
           id="jc_timer_toggle"
           label="Enable timer checking"
-          description="Trigger based on elapsed playback/inactivity time."
+          description="Trigger from elapsed viewing time, including movie playback."
           checked={c.EnableTimerCheck}
           onChange={(checked) => props.onUpdateField('EnableTimerCheck', checked)}
         />
